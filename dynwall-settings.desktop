@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dynwall Settings
+Comment=Configure the dynwall AI wallpaper generator
+Exec=/home/rucaradio/.local/bin/dynwall-settings
+Icon=preferences-desktop-wallpaper
+Categories=Settings;
+Terminal=false
+Keywords=wallpaper;dynwall;background;

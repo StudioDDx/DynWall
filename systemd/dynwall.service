@@ -1,0 +1,7 @@
+[Unit]
+Description=Generate dynamic wallpaper animation frames
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/dynwall --animate 24
+EnvironmentFile=-%h/.config/dynwall/env
