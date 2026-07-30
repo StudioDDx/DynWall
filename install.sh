@@ -4,6 +4,13 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Pre-flight: fail fast before installing anything if python deps are missing.
+if ! python3 -c "import PIL, requests" 2>/dev/null; then
+    echo "error: missing python deps — install them first, e.g.:" >&2
+    echo "  sudo apt install python3-pil python3-requests   # Debian/Ubuntu/Fedora (python3-pillow)" >&2
+    exit 1
+fi
+
 mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.config/dynwall" \
     "$HOME/.local/share/applications"
 ln -sf "$REPO/dynwall" "$HOME/.local/bin/dynwall"

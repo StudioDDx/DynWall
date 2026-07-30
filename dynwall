@@ -14,6 +14,7 @@ Motion: twinkling stars, breathing glow, slowly drifting celestial disc,
 shimmering film grain. Frames are pre-rendered (cheap to cycle).
 """
 
+import hashlib
 import json
 import math
 import os
@@ -123,9 +124,9 @@ def load_config() -> dict:
     for k in ("allow_network", "allow_animation", "mesh_enabled"):
         cfg[k] = _bool(raw.get(k), DEFAULTS[k])
     cfg["frames"] = _int(raw.get("frames"), DEFAULTS["frames"], 1, 120)
-    cfg["frame_seconds"] = _float(raw.get("frame_seconds"), DEFAULTS["frame_seconds"], 0.1, 60.0)
-    cfg["width"] = _int(raw.get("width"), DEFAULTS["width"], 64, 16384)
-    cfg["height"] = _int(raw.get("height"), DEFAULTS["height"], 64, 16384)
+    cfg["frame_seconds"] = _float(raw.get("frame_seconds"), DEFAULTS["frame_seconds"], 0.5, 10.0)
+    cfg["width"] = _int(raw.get("width"), DEFAULTS["width"], 1, 15360)
+    cfg["height"] = _int(raw.get("height"), DEFAULTS["height"], 1, 15360)
 
     if cfg["provider"] in PROVIDERS:
         p = PROVIDERS[cfg["provider"]]
@@ -150,18 +151,18 @@ def get_weather(allow_network: bool = True):
     if not allow_network:
         return "unknown"
     try:
-        out = subprocess.run(
-            [str(Path.home() / ".local/bin/weather-glyph"), "--temp"],
-            capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        return out or "unknown"
-    except Exception:
+        import requests
+        r = requests.get("https://wttr.in/?format=%t+%C", timeout=10)
+        r.raise_for_status()
+        return r.text.strip() or "unknown"
+    except Exception as e:
+        print(f"weather fetch failed ({e}); using 'unknown'", file=sys.stderr)
         return "unknown"
 
 
 def get_spec(weather: str, cfg: dict) -> dict:
     now = datetime.now()
-    key = f"{now:%Y-%m-%d-%H}|{weather}|{cfg['provider']}|{cfg['model']}|{hash(cfg['prompt'])}"
+    key = f"{now:%Y-%m-%d-%H}|{weather}|{cfg['provider']}|{cfg['model']}|{hashlib.sha256(cfg['prompt'].encode()).hexdigest()}"
 
     if SPEC_CACHE.exists():
         try:
@@ -486,7 +487,10 @@ def compose(scene, t: float, frame_seed: int) -> Image.Image:
 def set_wallpaper(path: Path):
     uri = f"file://{path}"
     for key in ("picture-uri", "picture-uri-dark"):
-        subprocess.run(["/usr/bin/gsettings", "set", "org.gnome.desktop.background", key, uri], check=False)
+        r = subprocess.run(["/usr/bin/gsettings", "set", "org.gnome.desktop.background", key, uri],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"gsettings failed: {r.stderr.strip()}", file=sys.stderr)
     subprocess.run(["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"], check=False)
 
 
@@ -501,11 +505,23 @@ def render_still(spec, mesh_enabled: bool = True):
 
 def render_frames(spec, n: int, mesh_enabled: bool = True):
     scene = build_scene(spec, mesh_enabled)
-    FRAMES_DIR.mkdir(parents=True, exist_ok=True)
-    for old in FRAMES_DIR.glob("f*.png"):
-        old.unlink()
+    # Render into a staging dir, then atomically swap so --play never sees
+    # half-written or missing frames.
+    staging = FRAMES_DIR.with_name("frames.new")
+    if staging.exists():
+        for old in staging.glob("f*.png"):
+            old.unlink()
+    staging.mkdir(parents=True, exist_ok=True)
     for i in range(n):
-        compose(scene, i / n, frame_seed=i).save(FRAMES_DIR / f"f{i:03d}.png", "PNG")
+        compose(scene, i / n, frame_seed=i).save(staging / f"f{i:03d}.png", "PNG")
+    old_dir = FRAMES_DIR.with_name("frames.old")
+    if FRAMES_DIR.exists():
+        FRAMES_DIR.rename(old_dir)
+    staging.rename(FRAMES_DIR)
+    if old_dir.exists():
+        for old in old_dir.glob("f*.png"):
+            old.unlink()
+        old_dir.rmdir()
     print(f"wrote {n} frames to {FRAMES_DIR}")
 
 
@@ -544,7 +560,11 @@ if __name__ == "__main__":
         if not cfg["allow_animation"]:
             print("animation disabled in config (allow_animation=false)", file=sys.stderr)
             sys.exit(1)
-        n = int(args[1]) if len(args) > 1 else cfg["frames"]
+        try:
+            n = int(args[1]) if len(args) > 1 else cfg["frames"]
+        except ValueError:
+            print(f"usage: dynwall --animate [N]  (N must be an integer, got {args[1]!r})", file=sys.stderr)
+            sys.exit(2)
         n = int(clamp(n, 1, 120))
         render_frames(spec, n, cfg["mesh_enabled"])
     else:
