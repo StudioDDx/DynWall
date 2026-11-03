@@ -405,7 +405,6 @@ vec3 dwTree(vec3 sky,vec2 p,float center,float base,float height,float seed,floa
 }
 vec3 dwLivingSeason(vec3 sky,vec2 p,vec3 terrain) {
     if(terrain.x<.5||terrain.x>2.5) return sky;
-    if(p.y<1.0-terrain.y-.12*(1.0+u_custom.y)) return sky;
     float ridge=dwLivingRidge(p,terrain),ground=smoothstep(ridge,ridge+.008,p.y);
     vec3 tint=vec3(1.0)+u_season.x*vec3(-.07,-.02,.08)+
         u_season.y*vec3(-.03,.07,-.02)+u_season.w*vec3(.13,-.01,-.10);
