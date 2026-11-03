@@ -13,7 +13,7 @@ GNOME Shell 50 extension, UUID `dynwall@rucaradio`. Install this directory as a 
 
 ## Inputs and interpretation
 
-`spec.landscape` controls three static panoramic ridges, a clustered treeline and
+`spec.landscape` controls five static panoramic ridges, a clustered treeline and
 atmospheric color separation near the bottom of the canvas. `u_landscape` carries
 enabled/height/mist; defaults are `[1, .2, .5]`, height is bounded to .1–.3, and
 mist to 0–1. The scene writer maps `landscape_enabled: false` to `style: "none"`.
@@ -61,7 +61,9 @@ Living-environment controls are published in the additive `scene.living` contrac
 policy pure and testable; `presentation.js` isolates synthetic previews and
 preserves discrete material selectors. GNOME 50 pack foregrounds use
 `St.ImageContent` and a spanned transparent actor behind application windows.
-The existing shader remains byte-identical in output when new uniforms are zero.
+The landscape update adds terrain materials even with seasonal controls zeroed;
+upper-sky pixels remain identical to the preceding renderer. Seasonal trees use
+fixed global-canvas coordinates, tapered branches, clustered foliage and conifers.
 Settings and the renderer share the existing TopWeather cache; no fetcher or
 permanent service was added. See the repository's living-environment verification
 report for behavior, artifacts, and host-session limits. Updated modules require

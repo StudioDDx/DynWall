@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DynWall landscape pack",
+  "description": "A static local PNG foreground with transparent animated sky. A scene cache document or AI art-direction spec is not a landscape pack.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "horizon", "foreground"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"type": "integer", "const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$(?![\\s\\S])"},
+    "name": {"type": "string", "maxLength": 100, "pattern": "\\S"},
+    "horizon": {"type": "number", "minimum": 0.1, "maximum": 0.95},
+    "foreground": {
+      "type": "string",
+      "pattern": "^(?:(?!\\.{1,2}(?:/|$))[^/\\\\\u0000]+/)*(?!\\.{1,2}(?:/|$))[^/\\\\\u0000]+\\.[pP][nN][gG]$(?![\\s\\S])",
+      "description": "Relative POSIX path to a static PNG. Empty, dot, parent, absolute, backslash and NUL path components are forbidden. The importer also validates actual image format, size and symlinks."
+    },
+    "author": {"type": "string", "maxLength": 1000},
+    "license": {"type": "string", "maxLength": 1000},
+    "description": {"type": "string", "maxLength": 1000}
+  }
+}

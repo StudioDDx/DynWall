@@ -53,11 +53,11 @@ DEFAULTS = {
 
 PROVIDERS = ["openai", "openrouter", "none"]
 BACKGROUNDS = ["auto", "ridges", "alpine", "dunes", "ocean", "sky"]
-BACKGROUND_LABELS = ["Automatic / art director", "Layered Ridges", "Alpine Stillness",
+BACKGROUND_LABELS = ["Automatic / art director", "Smoky Mountain Ridges", "Alpine Stillness",
                      "Amber Dunes", "Tidal Light", "Open Sky"]
 BACKGROUND_DESCRIPTIONS = [
     "Your AI art direction, offline sky palette, or selected seasonal theme.",
-    "Soft silhouettes, a distant treeline and layers of atmospheric mist.",
+    "Blue mountain ranges, mixed woodland and valley mist inspired by the Smokies.",
     "Snow-covered peaks, shaded rock faces and cool mountain air.",
     "Warm sand, sweeping crests and fine ripples under a wide sky.",
     "An open horizon with wind-driven water and broken sun or moon reflections.",

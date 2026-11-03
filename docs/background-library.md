@@ -1,5 +1,9 @@
 # Background library verification
 
+This report describes the original scene-library implementation. For the current
+landscape artwork, importer schema and fresh checks, see
+[Landscape update verification](landscape-verification.md).
+
 The scene library extends the existing procedural wallpaper and native GTK
 settings. It preserves the weather, solar position, stars, precipitation and
 seasonal effect paths. It adds explicit offline backgrounds and matching static

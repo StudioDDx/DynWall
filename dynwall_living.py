@@ -198,12 +198,44 @@ def pack_directory(pack_id):
 
 
 def _relative_asset(name):
-    if not isinstance(name, str) or '\\' in name or '\x00' in name:
+    if not isinstance(name, str) or '\\' in name or '\x00' in name or any(part in ('', '.', '..') for part in name.split('/')):
         raise ValueError('Invalid foreground path')
     path = PurePosixPath(name)
     if path.is_absolute() or not path.parts or any(part in ('.', '..') for part in path.parts) or path.suffix.lower() != '.png':
         raise ValueError('Foreground must be a relative PNG path inside the pack')
     return path
+
+
+def validate_pack_manifest(document):
+    """Validate the portable v1 manifest, independently of its local assets."""
+    version = document.get('schemaVersion') if isinstance(document, dict) else None
+    if isinstance(version, bool) or not isinstance(version, (int, float)) or version != 1:
+        raise ValueError('Unsupported landscape pack version')
+    allowed = {'schemaVersion', 'id', 'name', 'horizon', 'foreground', 'author', 'license', 'description', '$schema'}
+    unknown = sorted(set(document) - allowed)
+    if unknown:
+        raise ValueError('Unsupported landscape pack fields: ' + ', '.join(unknown))
+    pack_id, name, horizon = document.get('id'), document.get('name'), document.get('horizon')
+    if not _pack_id(pack_id) or not isinstance(name, str) or not name.strip() or len(name) > 100:
+        raise ValueError('Pack id or name is invalid')
+    if _number(horizon, -1, .1, .95) == -1 or not .1 <= horizon <= .95:
+        raise ValueError('Pack horizon must be finite and between 0.1 and 0.95')
+    _relative_asset(document.get('foreground'))
+    for key in ('author', 'license', 'description'):
+        if key in document and (not isinstance(document[key], str) or len(document[key]) > 1000):
+            raise ValueError(f'Pack {key} must be a string of at most 1000 characters')
+    if '$schema' in document and not isinstance(document['$schema'], str):
+        raise ValueError('Pack $schema must be a string')
+    return {**{key: value for key, value in document.items() if key != '$schema'}, 'schemaVersion': 1}
+
+
+def _unique_manifest_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f'Duplicate manifest field: {key}')
+        result[key] = value
+    return result
 
 
 def _regular(path, maximum):
@@ -228,18 +260,11 @@ def load_pack(path):
     manifest_path = root / 'manifest.json'
     _regular(manifest_path, MAX_MANIFEST_BYTES)
     try:
-        document = json.loads(manifest_path.read_text(encoding='utf-8'))
+        document = json.loads(manifest_path.read_text(encoding='utf-8'), object_pairs_hook=_unique_manifest_pairs)
     except (OSError, UnicodeError, ValueError) as error:
         raise ValueError('Pack manifest is corrupt') from error
-    if not isinstance(document, dict) or type(document.get('schemaVersion')) is not int or document['schemaVersion'] != 1:
-        raise ValueError('Unsupported landscape pack version')
-    pack_id = _pack_id(document.get('id'))
-    name = document.get('name')
-    horizon = document.get('horizon')
-    if not pack_id or not isinstance(name, str) or not name.strip() or len(name) > 100:
-        raise ValueError('Pack id or name is invalid')
-    if _number(horizon, -1, .1, .95) == -1 or not .1 <= horizon <= .95:
-        raise ValueError('Pack horizon must be finite and between 0.1 and 0.95')
+    document = validate_pack_manifest(document)
+    pack_id, name, horizon = document['id'], document['name'], document['horizon']
     relative = _relative_asset(document.get('foreground'))
     foreground = root.joinpath(*relative.parts)
     current = root
@@ -252,11 +277,12 @@ def load_pack(path):
         with Image.open(foreground) as image:
             if image.format != 'PNG' or image.width > 8192 or image.height > 8192 or image.width * image.height > MAX_PIXELS:
                 raise ValueError('Foreground image exceeds pack limits')
+            if getattr(image, 'is_animated', False):
+                raise ValueError('Foreground must be a static PNG; animated PNG is unsupported')
             image.verify()
     except (OSError, SyntaxError, Image.DecompressionBombError) as error:
         raise ValueError('Foreground image is corrupt') from error
-    metadata = {key: document[key] for key in ('author', 'license', 'description')
-                if isinstance(document.get(key), str) and len(document[key]) <= 1000}
+    metadata = {key: document[key] for key in ('author', 'license', 'description') if key in document}
     return {'schemaVersion': 1, 'id': pack_id, 'name': name.strip(), 'horizon': float(horizon),
             'foreground': str(foreground), 'root': str(root), **metadata}
 
@@ -293,21 +319,24 @@ def _extract_archive(source, temporary):
             for item in entries:
                 name = PurePosixPath(item.filename)
                 mode = item.external_attr >> 16
-                if name.is_absolute() or not name.parts or any(part in ('.','..') for part in name.parts) or '\\' in item.filename or '\x00' in item.filename or stat.S_ISLNK(mode) or item.filename in seen:
+                parts = item.filename.rstrip('/').split('/')
+                if name.is_absolute() or not name.parts or any(part in ('','.','..') for part in parts) or '\\' in item.filename or '\x00' in item.filename or stat.S_ISLNK(mode) or str(name) in seen:
                     raise ValueError('Unsafe pack archive path')
-                seen.add(item.filename)
+                seen.add(str(name))
                 if item.is_dir():
                     continue
                 if name.suffix.lower() not in ('.json', '.png'):
                     raise ValueError('Landscape packs may contain only JSON and PNG assets')
+                if name.name == 'manifest.json' and item.file_size > MAX_MANIFEST_BYTES:
+                    raise ValueError('Pack manifest exceeds 16 KiB')
                 target = temporary.joinpath(*name.parts)
                 target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 _write_private(target, archive.read(item))
-    except (zipfile.BadZipFile, RuntimeError) as error:
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as error:
         raise ValueError('Landscape pack archive is corrupt') from error
-    manifests = list(temporary.glob('manifest.json')) + list(temporary.glob('*/manifest.json'))
-    if len(manifests) != 1:
-        raise ValueError('Archive must contain exactly one pack manifest')
+    manifests = list(temporary.rglob('manifest.json'))
+    if len(manifests) != 1 or len(manifests[0].relative_to(temporary).parts) > 2:
+        raise ValueError('Archive must contain exactly one manifest at its root or in one enclosing folder')
     return manifests[0].parent
 
 
@@ -373,6 +402,8 @@ def list_packs():
         if not collection.is_dir():
             continue
         for path in sorted(collection.iterdir()):
+            if path.name.startswith('.'):
+                continue
             try:
                 pack = load_pack(path)
                 packs[pack['id']] = pack
