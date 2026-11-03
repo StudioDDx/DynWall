@@ -29,6 +29,27 @@ foreground.png
 }
 ```
 
+The machine-readable contract is [manifest.schema.json](manifest.schema.json).
+All five fields above `author` are required; `author`, `license`, `description`
+and an editor's `$schema` string are optional. Unknown fields, invalid metadata,
+and duplicate JSON keys are rejected rather than silently losing information.
+`schemaVersion` is version `1` (`1.0` is equivalent under JSON Schema and is
+canonicalized to integer `1` on import; booleans and strings are invalid). The
+foreground must be a static PNG. Paths may
+include subfolders and use `/` separators; `.`, `..` and empty path components
+are invalid. The importer verifies the image bytes and file limits in addition
+to the JSON structure.
+
+To create a scene, author `foreground.png` and this manifest, then select
+**Custom landscapes → Import folder** or **Import ZIP** in Settings. Importing
+selects the pack in the current settings form; **Save** applies that selection to
+the live wallpaper. Preview can show it before saving. There is no separate
+"Create scene" importer: the generated `scene.json` cache, an AI art-direction
+JSON spec, and a landscape-pack manifest are different formats. A v1 pack does
+not define its own sky, particles, shaders, animation frames or weather physics;
+those continue to come from the renderer. Unsupported fields must not be used to
+imply capabilities the importer cannot render.
+
 The horizon is a fraction measured downward from the top of the image. It must be
 between 0.1 and 0.95. Transparent PNG cutouts preserve branches and treetops above
 the horizon. Importing an opaque photograph automatically makes the area above

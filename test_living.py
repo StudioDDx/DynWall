@@ -142,6 +142,69 @@ class PackTests(unittest.TestCase):
 
 class PackBoundaryTests(unittest.TestCase):
  make_pack = PackTests.make_pack
+ def test_manifest_version_matches_json_schema_numeric_integer_semantics(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);source=self.make_pack(base/'source');path=source/'manifest.json';manifest=json.loads(path.read_text())
+   path.write_text(json.dumps({**manifest,'schemaVersion':1.0}));result=living.import_pack(source,base/'store')
+   self.assertIs(type(result['schemaVersion']),int)
+   self.assertIs(type(json.loads((Path(result['root'])/'manifest.json').read_text())['schemaVersion']),int)
+   for version in (True,False,0,2,1.1,'1',None):
+    path.write_text(json.dumps({**manifest,'schemaVersion':version}))
+    with self.subTest(version=version),self.assertRaises(ValueError):living.load_pack(source)
+ def test_manifest_schema_rejects_unknown_capabilities_and_invalid_metadata(self):
+  with tempfile.TemporaryDirectory() as td:
+   source=self.make_pack(Path(td)/'source');path=source/'manifest.json';manifest=json.loads(path.read_text())
+   for changes in ({'layers':[]},{'weather':{}},{'author':17},{'license':None},{'description':'x'*1001},{'$schema':True}):
+    path.write_text(json.dumps({**manifest,**changes}))
+    with self.subTest(changes=str(changes)[:50]),self.assertRaises(ValueError):living.load_pack(source)
+ def test_duplicate_manifest_fields_rejected_before_publication(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);source=self.make_pack(base/'source');path=source/'manifest.json';text=path.read_text()
+   path.write_text(text[:-1]+',"horizon":0.7}')
+   with self.assertRaisesRegex(ValueError,'corrupt'):living.import_pack(source,base/'store')
+   self.assertFalse((base/'store').exists())
+ def test_declared_schema_path_contract_matches_importer(self):
+  import re
+  schema=json.loads((Path(__file__).parent/'packs/manifest.schema.json').read_text())
+  self.assertEqual(set(schema['required']),{'schemaVersion','id','name','horizon','foreground'})
+  self.assertFalse(schema['additionalProperties'])
+  pattern=re.compile(schema['properties']['foreground']['pattern'])
+  for name,valid in [('foreground.png',True),('assets/HILL.PNG',True),('../hill.png',False),('./hill.png',False),('assets//hill.png',False),('/hill.png',False),('assets/./hill.png',False),('assets/../hill.png',False),('a\\hill.png',False),('hill.png\x00',False),('hill.png\n',False)]:
+   with self.subTest(name=name):
+    self.assertEqual(bool(pattern.fullmatch(name)),valid)
+    if valid:self.assertEqual(str(living._relative_asset(name)),name)
+    else:
+     with self.assertRaises(ValueError):living._relative_asset(name)
+ def test_nested_uppercase_png_is_imported_canonically(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);source=self.make_pack(base/'source');(source/'assets').mkdir();(source/'foreground.png').rename(source/'assets/HILL.PNG');path=source/'manifest.json'
+   path.write_text(json.dumps({**json.loads(path.read_text()),'foreground':'assets/HILL.PNG','$schema':'../manifest.schema.json'}))
+   result=living.import_pack(source,base/'store');self.assertEqual(Path(result['foreground']).name,'foreground.png');self.assertNotIn('$schema',result)
+ def test_animated_png_rejected_instead_of_silently_taking_first_frame(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);source=self.make_pack(base/'source');first=Image.new('RGBA',(200,100),(30,80,60,255));second=Image.new('RGBA',(200,100),(80,30,60,255))
+   first.save(source/'foreground.png',save_all=True,append_images=[second],duration=100,loop=0)
+   with self.assertRaisesRegex(ValueError,'static PNG'):living.import_pack(source,base/'store')
+   self.assertFalse((base/'store').exists())
+ def test_archive_rejects_aliased_paths_and_extra_nested_manifests(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);source=self.make_pack(base/'source')
+   for bad in ('./unused.png','assets//unused.png','extra/nested/manifest.json'):
+    archive=base/'bad.zip'
+    with zipfile.ZipFile(archive,'w') as z:
+     z.write(source/'manifest.json','manifest.json');z.write(source/'foreground.png','foreground.png');z.writestr(bad,'{}')
+    with self.subTest(path=bad),self.assertRaises(ValueError):living.import_pack(archive,base/'store')
+    self.assertFalse((base/'store').exists())
+ def test_archive_accepts_one_enclosing_folder(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);source=self.make_pack(base/'source');archive=base/'wrapped.zip'
+   with zipfile.ZipFile(archive,'w') as z:
+    z.write(source/'manifest.json','landscape/manifest.json');z.write(source/'foreground.png','landscape/foreground.png')
+   self.assertEqual(living.import_pack(archive,base/'store')['id'],'test-pack')
+ def test_pack_catalog_ignores_unpublished_staging_folders(self):
+  with tempfile.TemporaryDirectory() as td:
+   base=Path(td);self.make_pack(base/'.pack-inflight',name='unpublished')
+   with patch.object(living,'pack_store',return_value=base):self.assertNotIn('unpublished',[p['id']for p in living.list_packs()])
  def test_nonfinite_boolean_and_huge_horizons_are_rejected(self):
   with tempfile.TemporaryDirectory() as td:
    source=self.make_pack(Path(td)/'source');manifest=json.loads((source/'manifest.json').read_text())

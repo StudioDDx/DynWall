@@ -415,7 +415,7 @@ def fallback_spec(now: datetime, weather: str, style="hills"):
     twilight = 6 <= hour <= 8 or 16 <= hour < 20
     return {
         "title": {"alpine": "Alpine Stillness", "dunes": "Amber Dunes", "ocean": "Tidal Light",
-                  "none": "Open Sky"}.get(style, ("Copper" if autumn else "Luminous") + (" night" if dark else " horizon")),
+                  "none": "Open Sky"}.get(style, "Smoky Mountain " + ("Night" if dark else "Ridges")),
         "gradient": ["#%02x%02x%02x" % color for color in stops],
         "gradient_positions": [0, .32, .64, .84, 1],
         "accent": "#d9a566" if autumn else "#b7c9ba",
@@ -640,10 +640,12 @@ def build_landscape(spec, stops):
     style = cfg.get("style", "hills")
     if style == "ocean":
         waterline = 1-height
-        light_x = num(spec.get("celestial", {}).get("x"), .73)*W
+        celestial = spec.get("celestial") if isinstance(spec.get("celestial"), dict) else {}
+        glow = spec.get("glow") if isinstance(spec.get("glow"), dict) else {}
+        light_x = num(celestial.get("x"), .73)*W
         for py in range(round(waterline*H), H):
             depth = (py/H-waterline)/height
-            reflected = hex_rgb(spec.get("glow", {}).get("color", "#ffe0b4"))
+            reflected = hex_rgb(glow.get("color", "#ffe0b4"))
             color = tuple(round(horizon[i]*(.5-.23*depth)+shadow[i]*(.5+.23*depth)) for i in range(3))
             draw.line((0, py, W, py), fill=(*color, 255))
             shimmer = max(0, math.sin(py*1.7)+math.sin(py*.47))*.11
@@ -653,33 +655,76 @@ def build_landscape(spec, stops):
                 glint = tuple(round(color[i]*(1-shimmer)+reflected[i]*shimmer) for i in range(3))
                 draw.line((cx-span, py, cx+span, py), fill=(*glint, 255))
         return layer
-    for depth in range(3):
-        points = []
-        step = max(1, W // 1200)
-        for px in range(0, W + step, step):
-            x = px / max(1, H)
-            ridge = (1-height + depth*.055 +
-                     (math.sin(x*2+depth*2)*.045 + math.sin(x*5.3+depth*3)*.018 +
-                      math.sin(x*11+depth)*.006)*height/.2)
-            if style == "alpine":
-                peaks = abs(math.sin(x*1.9+depth*2.1))*.080+abs(math.sin(x*4.3+depth*.7))*.025
-                ridge = 1-height+depth*.065+(peaks-.054+math.sin(x*19+depth)*.004)*height/.2
-            elif style == "dunes":
-                ridge = 1-height+depth*.055+(math.sin(x*1.7+depth*1.8)*.035+math.sin(x*3.1+depth)*.015)*height/.2
-            points.append((px, round(ridge*H)))
-        fog = (.6-depth*.23)*(.65+mist*.7)
-        color = tuple(round(shadow[i]*(1-fog) + horizon[i]*fog) for i in range(3))
-        draw.polygon([(0, H), *points, (W, H)], fill=(*color, 255))
+    def ridge_at(x, depth):
         if style == "alpine":
-            snowline = (1-height+.025+depth*.065)*H
-            snow = tuple(round((stops[-1][i]*.68+stops[2][i]*.32)*(.45+.55*daylight)) for i in range(3))
-            for px, py in points:
-                bottom = round(snowline+math.sin(px/max(1,H)*31)*H*.007)
-                if py < bottom:
-                    draw.line((px, py, px, bottom), fill=(*snow, 255), width=step)
+            peaks = abs(math.sin(x*1.9+depth*2.1))*.080+abs(math.sin(x*4.3+depth*.7))*.025
+            return 1-height+depth*.065+(peaks-.054+math.sin(x*19+depth)*.004)*height/.2
+        if style == "dunes":
+            return 1-height+depth*.055+(math.sin(x*1.7+depth*1.8)*.035+math.sin(x*3.1+depth)*.015)*height/.2
+        folds = math.sin(x*17.3+depth*11.0)*.002+math.sin(x*39.1+depth*7.0)*.001
+        return 1-height+depth*.055+(math.sin(x*2+depth*2)*.045+
+            math.sin(x*5.3+depth*3)*.018+math.sin(x*11+depth)*.006+folds)*height/.2
+
+    rng = random.Random(572004)
+    step = max(1, W // 1600)
+    for index in range(5):
+        depth = index*.5
+        points = [(px, round(ridge_at(px/max(1, H), depth)*H))
+                  for px in range(0, W+step, step)]
+        fog = clamp((.72-depth*.28)*(.65+mist*.55), 0, .9)
+        if style == "hills":
+            material = (31, 56, 48) if daylight else (6, 11, 15)
+            air = [horizon[i]*.52+stops[min(2,len(stops)-1)][i]*(.82 if daylight else .3)*.48 for i in range(3)]
         elif style == "dunes":
-            crest = tuple(round(color[i]*.75+stops[-1][i]*.25) for i in range(3))
-            draw.line(points, fill=(*crest, 255), width=max(1, H//500))
+            material = (151, 97, 54) if daylight else (19, 15, 15)
+            air = horizon
+        else:
+            material = (63, 70, 78) if daylight else (11, 15, 22)
+            air = horizon
+        color = tuple(round(material[i]*(1-fog)+air[i]*fog) for i in range(3))
+        mask = Image.new("L", (W, H))
+        ImageDraw.Draw(mask).polygon([(0, H), *points, (W, H)], fill=255)
+        surface = Image.new("RGBA", (W, H), (*color, 255))
+        detail = ImageDraw.Draw(surface)
+        top = max(0, min(y for _, y in points))
+        for py in range(top, H):
+            amount = .94+.06*math.sin(py/H*18+depth*2)
+            tint = tuple(round(c*amount) for c in color)
+            detail.line((0, py, W, py), fill=(*tint, 255))
+        if style == "alpine":
+            snow = tuple(round(v*(.87 if daylight else .3)) for v in stops[-1])
+            for px, py in points:
+                snowline = (1-height+.035+depth*.065+math.sin(px/max(1,H)*31)*.008)*H
+                if py < snowline:
+                    detail.line((px, py, px, round(snowline)), fill=(*snow, 255), width=step)
+                # Shaded rock folds descend from the crest into the scree.
+                if px % (step*7) == 0:
+                    shade = tuple(round(c*.86) for c in color)
+                    detail.line((px, py, px+H*.012, py+H*.045), fill=(*shade, 255), width=step)
+        elif style == "dunes":
+            for py in range(top, H, max(2, H//260)):
+                ripple = [(px, py+math.sin(px/max(1,H)*5)*H*.008)
+                          for px in range(0, W+step*5, step*5)]
+                detail.line(ripple, fill=(*tuple(round(c*1.035) for c in color), 255), width=1)
+        else:
+            # Small canopy marks, compressed with distance, break up the slopes.
+            for _ in range(max(80, W//3)):
+                px = rng.randrange(W)
+                py = rng.randrange(top, max(top+1, H))
+                radius = max(1, round(H*.001*(.5+depth)*rng.uniform(.5,1.6)))
+                tint = tuple(int(clamp(c*rng.uniform(.94,1.06),0,255)) for c in color)
+                detail.ellipse((px-radius,py-radius,px+radius,py+radius*.4), fill=(*tint,255))
+        layer.alpha_composite(Image.composite(surface, Image.new("RGBA", (W,H)), mask))
+        if style == "hills":
+            # Distant groves share the stable terrain contour in offline previews.
+            spacing = max(2, H//100)
+            for px in range(0, W, spacing):
+                x = px/max(1,H)
+                if math.sin(x*8.1+depth*3.0)<.1:
+                    continue
+                py = ridge_at(x,depth)*H+1
+                crown = max(1, H*rng.uniform(.0015,.0045)*(1+depth*.35))
+                draw.ellipse((px-crown,py-crown*1.8,px+crown,py+crown*.3), fill=(*color,255))
     return layer
 
 

@@ -1,0 +1,399 @@
+{
+  "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)",
+  "quality": "balanced",
+  "width": 1280,
+  "height": 720,
+  "frame_timing_samples_ms": {
+    "day": [
+      50.34,
+      42.7,
+      78.0
+    ],
+    "overcast": [
+      43.32,
+      36.19,
+      36.09
+    ],
+    "rain": [
+      48.21,
+      36.74,
+      37.19
+    ],
+    "snow": [
+      39.05,
+      49.16,
+      41.1
+    ],
+    "night": [
+      42.09,
+      38.07,
+      38.16
+    ],
+    "night-clear": [
+      21.79,
+      19.85,
+      20.55
+    ],
+    "night-overcast": [
+      37.72,
+      36.02,
+      40.79
+    ],
+    "dawn": [
+      35.17,
+      38.85,
+      35.91
+    ],
+    "fallback-day": [
+      35.04,
+      33.07,
+      37.97
+    ],
+    "golden-hour": [
+      35.42,
+      37.88,
+      39.64
+    ],
+    "night-fallback": [
+      35.49,
+      36.35,
+      36.11
+    ],
+    "ridges-day": [
+      32.33,
+      38.81,
+      35.85
+    ],
+    "ridges-dusk": [
+      35.49,
+      34.5,
+      36.65
+    ],
+    "ridges-night": [
+      34.4,
+      38.25,
+      36.51
+    ],
+    "alpine-day": [
+      40.08,
+      41.17,
+      41.8
+    ],
+    "alpine-dusk": [
+      41.31,
+      44.01,
+      40.83
+    ],
+    "alpine-night": [
+      43.68,
+      46.58,
+      43.53
+    ],
+    "dunes-day": [
+      31.2,
+      31.75,
+      52.16
+    ],
+    "dunes-dusk": [
+      32.84,
+      29.55,
+      30.28
+    ],
+    "dunes-night": [
+      30.58,
+      39.98,
+      43.11
+    ],
+    "ocean-day": [
+      18.45,
+      19.96,
+      21.97
+    ],
+    "ocean-dusk": [
+      18.08,
+      19.59,
+      18.16
+    ],
+    "ocean-night": [
+      47.57,
+      31.52,
+      20.37
+    ],
+    "sky-day": [
+      19.18,
+      18.94,
+      17.62
+    ],
+    "sky-dusk": [
+      18.84,
+      19.24,
+      22.55
+    ],
+    "sky-night": [
+      27.16,
+      26.05,
+      36.16
+    ],
+    "halloween-day": [
+      44.12,
+      39.63,
+      39.75
+    ],
+    "halloween-day-rain": [
+      38.91,
+      41.03,
+      39.28
+    ],
+    "halloween-day-snow": [
+      41.91,
+      44.54,
+      42.05
+    ],
+    "halloween": [
+      39.95,
+      40.4,
+      39.71
+    ],
+    "halloween-rain": [
+      38.53,
+      40.59,
+      41.35
+    ],
+    "halloween-snow": [
+      43.85,
+      43.36,
+      44.95
+    ],
+    "living-day": [
+      31.76,
+      33.11,
+      31.67
+    ],
+    "living-night": [
+      33.52,
+      36.7,
+      35.82
+    ],
+    "living-wet": [
+      43.16,
+      46.18,
+      50.72
+    ],
+    "living-accumulated-snow": [
+      40.23,
+      42.2,
+      40.91
+    ],
+    "living-winter": [
+      39.17,
+      41.98,
+      40.14
+    ],
+    "living-spring": [
+      39.76,
+      40.75,
+      41.51
+    ],
+    "living-summer": [
+      39.84,
+      41.02,
+      39.48
+    ],
+    "living-autumn": [
+      40.78,
+      42.65,
+      41.71
+    ],
+    "living-customization": [
+      41.93,
+      43.24,
+      46.9
+    ],
+    "living-shooting-star": [
+      35.49,
+      39.19,
+      37.87
+    ],
+    "living-lightning": [
+      33.98,
+      33.64,
+      35.69
+    ],
+    "living-fireflies": [
+      44.44,
+      44.94,
+      43.78
+    ],
+    "living-pollen": [
+      38.76,
+      40.89,
+      40.91
+    ],
+    "living-birds": [
+      35.23,
+      33.92,
+      33.39
+    ],
+    "living-ocean": [
+      16.06,
+      17.21,
+      17.97
+    ],
+    "living-ocean-wet": [
+      20.66,
+      17.18,
+      18.82
+    ],
+    "preview-sunrise": [
+      39.39,
+      42.27,
+      42.0
+    ],
+    "preview-day": [
+      41.37,
+      41.75,
+      42.11
+    ],
+    "preview-night": [
+      42.92,
+      42.01,
+      46.35
+    ],
+    "preview-rain": [
+      52.21,
+      52.19,
+      52.77
+    ],
+    "preview-snow": [
+      55.7,
+      54.2,
+      56.67
+    ],
+    "preview-storm": [
+      60.66,
+      51.06,
+      53.19
+    ]
+  },
+  "median_frame_ms": {
+    "day": 50.34,
+    "overcast": 36.19,
+    "rain": 37.19,
+    "snow": 41.1,
+    "night": 38.16,
+    "night-clear": 20.55,
+    "night-overcast": 37.72,
+    "dawn": 35.91,
+    "fallback-day": 35.04,
+    "golden-hour": 37.88,
+    "night-fallback": 36.11,
+    "ridges-day": 35.85,
+    "ridges-dusk": 35.49,
+    "ridges-night": 36.51,
+    "alpine-day": 41.17,
+    "alpine-dusk": 41.31,
+    "alpine-night": 43.68,
+    "dunes-day": 31.75,
+    "dunes-dusk": 30.28,
+    "dunes-night": 39.98,
+    "ocean-day": 19.96,
+    "ocean-dusk": 18.16,
+    "ocean-night": 31.52,
+    "sky-day": 18.94,
+    "sky-dusk": 19.24,
+    "sky-night": 27.16,
+    "halloween-day": 39.75,
+    "halloween-day-rain": 39.28,
+    "halloween-day-snow": 42.05,
+    "halloween": 39.95,
+    "halloween-rain": 40.59,
+    "halloween-snow": 43.85,
+    "living-day": 31.76,
+    "living-night": 35.82,
+    "living-wet": 46.18,
+    "living-accumulated-snow": 40.91,
+    "living-winter": 40.14,
+    "living-spring": 40.75,
+    "living-summer": 39.84,
+    "living-autumn": 41.71,
+    "living-customization": 43.24,
+    "living-shooting-star": 37.87,
+    "living-lightning": 33.98,
+    "living-fireflies": 44.44,
+    "living-pollen": 40.89,
+    "living-birds": 33.92,
+    "living-ocean": 17.21,
+    "living-ocean-wet": 18.82,
+    "preview-sunrise": 42.0,
+    "preview-day": 41.75,
+    "preview-night": 42.92,
+    "preview-rain": 52.21,
+    "preview-snow": 55.7,
+    "preview-storm": 53.19
+  },
+  "motion_pixel_delta": 8.172921006944444,
+  "star_signal_clear_overcast": {
+    "0": 0.2029372829861111,
+    "1": 0.0007649739583333333
+  },
+  "rain_direction_error": {
+    "5": {
+      "with_wind": 5.180033089515848,
+      "against_wind": 10.244857834240774
+    },
+    "-5": {
+      "with_wind": 5.146311114777539,
+      "against_wind": 10.20159627124237
+    }
+  },
+  "monitor_partition_pixel_delta": [
+    9.765624999999999e-05,
+    0.00010127314814814815
+  ],
+  "leaf_signal": 1.0415737123842592,
+  "leaf_direction_error": {
+    "1": {
+      "with_wind": 1.1247238272342874,
+      "against_wind": 4.984830975625955
+    },
+    "-1": {
+      "with_wind": 0.7232472161342454,
+      "against_wind": 3.4884350578911247
+    }
+  },
+  "isolated_gust_frame_samples_ms": [
+    19.36,
+    19.21,
+    20.62
+  ],
+  "isolated_gust_median_frame_ms": 19.36,
+  "production_shader": "extension/weather.glsl",
+  "living_effect_signal": {
+    "living-wet": 3.564695457175926,
+    "living-accumulated-snow": 22.167451171875,
+    "living-winter": 1.1940360966435184,
+    "living-spring": 2.3963545283564813,
+    "living-summer": 2.2466981336805554,
+    "living-autumn": 2.6578833912037036,
+    "living-customization": 35.11135561342593,
+    "living-shooting-star": 0.024744646990740738,
+    "living-lightning": 12.397735098379629,
+    "living-fireflies": 0.008233145254629629,
+    "living-pollen": 0.00420753761574074,
+    "living-birds": 0.013444372106481481,
+    "living-ocean-wet": 3.8444766348379624,
+    "pack-woodland-production": 28.642008101851854
+  },
+  "landscape_signal": 125.31761429398148,
+  "background_style_signal": {
+    "2": 15.125974030671296,
+    "3": 9.82194263599537,
+    "4": 12.360896990740741
+  },
+  "terrain_shadow_motion": 1.5903286637931036,
+  "mist_motion": 0.06844468390804598,
+  "snow_advection": 9.136551649305556,
+  "wind_scintillation": 0.006165726273148149,
+  "star_twinkle": 0.02766963252314815,
+  "shader_sha256": "1de33706479f80749790a4a786ef10ee221ce14e82b7f3e0a27fae6aa5cf146c"
+}

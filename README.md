@@ -134,17 +134,19 @@ Open `dynwall-settings` and choose **Background → Scene**. Each built-in scene
 works offline, evolves through dawn/day/dusk/night, and retains TopWeather's
 clouds, precipitation, wind and the existing sun/moon placement:
 
-- **Layered Ridges** — mist-separated hills and a quiet treeline.
+- **Smoky Mountain Ridges** — overlapping blue ranges, valley mist, mixed woodland and seasonal trees inspired by the Smokies.
 - **Alpine Stillness** — irregular snow-covered peaks and shaded mountain faces.
 - **Amber Dunes** — warm sand, sweeping crests and fine surface ripples.
 - **Tidal Light** — open water, a distant horizon and broken light reflections.
-  Water advection follows integrated weather wind; calm water stays still.
+  Water advection follows integrated weather wind; slow swell continues in calm conditions.
 - **Open Sky** — uninterrupted atmosphere with no terrain.
 - **Automatic / art director** — retain the existing AI, offline fallback and
   seasonal theme behavior.
 
 The picker includes illustrative daytime previews rendered by the production
 shader. [Compare the scenes at day, dusk and night](docs/previews/background-library.jpg).
+See the [landscape update and verification](docs/landscape-verification.md) for
+before/after views, importer findings and reproducible checks.
 Static fallback wallpapers use matching scene silhouettes and palettes; water
 animation runs in the GPU extension. **Save** applies the selected GPU scene
 without a network call; **Save & Regenerate now** also updates the static image.

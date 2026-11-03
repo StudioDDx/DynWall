@@ -55,3 +55,11 @@ class BackgroundTests(unittest.TestCase):
                 self.assertIsNotNone(image.crop((0, 230, 480, 270)).getbbox())
                 images.append(image.tobytes())
             self.assertEqual(len(set(images)), 4)
+
+    def test_ocean_fallback_accepts_optional_null_artwork(self):
+        spec = {'gradient': ['#123456', '#789abc'],
+                'landscape': {'style': 'ocean'}, 'glow': None, 'celestial': None}
+        with patch.object(app, 'W', 96), patch.object(app, 'H', 54):
+            image = app.build_landscape(spec, [app.hex_rgb(c) for c in spec['gradient']])
+        self.assertIsNone(image.crop((0, 0, 96, 40)).getbbox())
+        self.assertIsNotNone(image.crop((0, 50, 96, 54)).getbbox())

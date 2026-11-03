@@ -4,6 +4,12 @@ const api = await import('../extension/presentation.js').catch(() => ({}));
 const now = new Date(2026, 10, 1, 22, 0).getTime();
 const spec = {gradient:['#102030','#8090a0'], landscape:{style:'hills'}, stars:0};
 const doc = {schemaVersion:1, generatedAt:now, spec, renderer:{enabled:true}};
+test('native pack descriptors accept canonical uppercase PNGs and reject ambiguous paths',()=>{
+ const pack={root:'/tmp/landscape',foreground:'/tmp/landscape/assets/HILL.PNG',horizon:.6};
+ assert.deepEqual(api.sanitizePack(pack),pack);
+ for(const changes of [{root:'/tmp//landscape'},{root:'/tmp/./landscape'},{root:'/tmp/../landscape'},{root:'/tmp/landscape\0'},{foreground:'/tmp/landscape/./hill.png'},{foreground:'/tmp/landscape/assets//hill.png'},{foreground:'/tmp/landscape/../hill.png'},{foreground:'/tmp/landscape/hill.png\0'},{foreground:'/tmp/landscape/hill.png\n'},{foreground:'/tmp/landscape/assets\\hill.png'},{horizon:true},{horizon:NaN}])
+  assert.equal(api.sanitizePack({...pack,...changes}),null,JSON.stringify(changes));
+});
 test('preview is separate from authoritative observations and returning live restores solar time', () => {
  const weather={schemaVersion:1,fetchedAt:now,latitude:42,longitude:-83,current:{rain:2,isNight:true}};
  const before=JSON.stringify(weather);

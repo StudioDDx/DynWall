@@ -45,9 +45,10 @@ export function transitionPresentation(previous, target, dt) {
 }
 export function sanitizePack(value) {
  if (!value || typeof value.root!=='string' || !value.root.startsWith('/') ||
+     value.root.includes('\\') || value.root.includes('\0') || value.root.split('/').slice(1).some(part=>!part||part==='..'||part==='.') ||
      typeof value.foreground!=='string' || !value.foreground.startsWith(`${value.root}/`) ||
-     value.foreground.split('/').some(part=>part==='..'||part==='.') ||
-     !value.foreground.endsWith('.png') || !Number.isFinite(value.horizon) ||
+     value.foreground.includes('\\') || value.foreground.includes('\0') || value.foreground.split('/').slice(1).some(part=>!part||part==='..'||part==='.') ||
+     !value.foreground.toLowerCase().endsWith('.png') || !Number.isFinite(value.horizon) ||
      value.horizon<.1 || value.horizon>.95) return null;
  return {root:value.root,foreground:value.foreground,horizon:value.horizon};
 }

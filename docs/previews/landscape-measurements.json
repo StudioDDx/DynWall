@@ -1,0 +1,107 @@
+{
+  "renderer": "llvmpipe (LLVM 19.1.7, 256 bits)",
+  "width": 1920,
+  "height": 540,
+  "shader": "extension/weather.glsl",
+  "shader_sha256": "1de33706479f80749790a4a786ef10ee221ce14e82b7f3e0a27fae6aa5cf146c",
+  "sky_reference_matches": [
+    "ridges-day",
+    "ridges-dusk",
+    "ridges-night",
+    "alpine-day",
+    "alpine-dusk",
+    "alpine-night",
+    "dunes-day",
+    "dunes-dusk",
+    "dunes-night",
+    "ocean-day",
+    "ocean-dusk",
+    "ocean-night",
+    "living-winter",
+    "living-spring",
+    "living-summer",
+    "living-autumn"
+  ],
+  "stationary_land": [
+    "ridges-day",
+    "ridges-dusk",
+    "ridges-night",
+    "alpine-day",
+    "alpine-dusk",
+    "alpine-night",
+    "dunes-day",
+    "dunes-dusk",
+    "dunes-night",
+    "living-winter",
+    "living-spring",
+    "living-summer",
+    "living-autumn"
+  ],
+  "partition_mean_delta": {
+    "ridges-day": [
+      2.957818930041152e-05,
+      4.8225308641975306e-05
+    ],
+    "ridges-dusk": [
+      4.5010288065843624e-05,
+      4.6939300411522636e-05
+    ],
+    "ridges-night": [
+      1.6075102880658434e-05,
+      3.536522633744856e-05
+    ],
+    "alpine-day": [
+      3.472222222222222e-05,
+      6.237139917695473e-05
+    ],
+    "alpine-dusk": [
+      4.565329218106996e-05,
+      6.301440329218107e-05
+    ],
+    "alpine-night": [
+      2.5077160493827162e-05,
+      3.922325102880659e-05
+    ],
+    "dunes-day": [
+      2.1219135802469135e-05,
+      3.793724279835391e-05
+    ],
+    "dunes-dusk": [
+      3.793724279835391e-05,
+      5.0154320987654325e-05
+    ],
+    "dunes-night": [
+      1.8647119341563788e-05,
+      3.215020576131687e-05
+    ],
+    "ocean-day": [
+      2.05761316872428e-05,
+      4.3081275720164605e-05
+    ],
+    "ocean-dusk": [
+      2.7649176954732513e-05,
+      3.793724279835391e-05
+    ],
+    "ocean-night": [
+      1.2860082304526749e-05,
+      2.957818930041152e-05
+    ],
+    "living-winter": [
+      5.208333333333334e-05,
+      4.951131687242798e-05
+    ],
+    "living-spring": [
+      4.3081275720164605e-05,
+      5.9799382716049385e-05
+    ],
+    "living-summer": [
+      4.243827160493827e-05,
+      5.594135802469136e-05
+    ],
+    "living-autumn": [
+      4.436728395061729e-05,
+      6.815843621399177e-05
+    ]
+  },
+  "median_frame_ms": {}
+}

@@ -170,38 +170,49 @@ vec3 dwLeaves(vec3 sky, vec2 p) {
 float dwRidge(float x,float layer,float height,float style) {
     float relief=1.0+u_custom.y;
     if(style>1.5 && style<2.5) {
-        float peaks=abs(dwNoise(vec2(x*3.5,layer*7.0+3.0))-.5)*.19+
-            dwNoise(vec2(x*11.0,layer*13.0))*.035+
-            dwNoise(vec2(x*37.0,layer*19.0))*.012;
+        float peaks=abs(dwNoise(vec2(x*3.5,layer*7.0+3.0))-.5)*.21+
+            abs(dwNoise(vec2(x*9.0,layer*13.0))-.5)*.054+
+            dwNoise(vec2(x*37.0,layer*19.0))*.009;
         return 1.0-height+layer*.065+
             (peaks-.065+sin(x*19.0+layer)*.004)*height/.2*relief;
     }
     if(style>2.5) return 1.0-height+layer*.055+
-        (sin(x*1.7+layer*1.8)*.035+sin(x*3.1+layer)*.015)*height/.2*relief;
+        (sin(x*1.7+layer*1.8)*.035+sin(x*3.1+layer)*.015+
+         (dwNoise(vec2(x*5.0,layer*8.0))-.5)*.008)*height/.2*relief;
+    // Broad landforms with smaller erosion folds, shared by all ground masks.
+    float folds=(dwNoise(vec2(x*9.0,layer*17.1))-.5)*.009+
+        (dwNoise(vec2(x*26.0,layer*5.7))-.5)*.003;
     return 1.0-height+layer*.055+
         (sin(x*2.0+layer*2.0)*.045+sin(x*5.3+layer*3.0)*.018+
-         sin(x*11.0+layer)*.006)*height/.2*relief;
+         sin(x*11.0+layer)*.006+folds)*height/.2*relief;
 }
 vec3 dwOcean(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
     float horizon=1.0-terrain.y;
     if(p.y<horizon) return sky;
     float depth=clamp((p.y-horizon)/terrain.y,0.0,1.0);
-    // Long, broken glints on a perspective-compressed water surface. Integrated
-    // weather flow keeps wave advection continuous when the wind changes.
     float travel=u_time*(1.0+length(u_wind)*.025);
+    // Perspective increases wave spacing toward the viewer; two crossing
+    // swells break the old uniformly striped plane into connected wavelets.
     float perspective=1.0/(depth+.065);
-    float ripple=sin(perspective*5.0-travel*1.4+
-        sin(p.x*18.0-u_flow.x*20.0+travel*.17)*2.0+u_flow.y*35.0);
-    ripple=ripple*.65+.35*sin(perspective*8.7-travel*.83+p.x*29.0);
-    float detail=dwNoise(vec2(p.x*95.0,perspective*17.0-travel*.7)-u_flow*9.0);
+    float swell=sin(perspective*4.2-travel*1.2+p.x*3.0+
+        sin(p.x*10.0-u_flow.x*14.0)*.45);
+    float cross=sin(perspective*6.7-travel*.78-p.x*8.0+u_flow.y*24.0);
+    float ripple=swell*.66+cross*.34;
+    float detail=dwNoise(vec2(p.x*(75.0-depth*38.0),perspective*11.0-travel*.6)-u_flow*9.0);
+    float fresnel=pow(1.0-depth,.75);
     vec3 reflected=dwPalette(clamp(horizon-(p.y-horizon)*1.5,0.0,1.0));
-    vec3 water=mix(reflected,u_color0*.26+u_color1*.22,.45+depth*.28);
-    water*=.9+.1*ripple;
-    float width=.016+depth*.20;
-    float reflection=exp(-pow((p.x-lightPos.x+sin(p.y*210.0)*width*.25)/width,2.0));
-    float glint=smoothstep(.25,.95,ripple*.5+detail*.5);
-    water+=mix(vec3(.55,.67,.78),u_glowColor,u_daylight)*reflection*glint*
-        (.10+u_daylight*.20)*(1.0-u_coverage*.7);
+    vec3 deep=mix(vec3(.018,.05,.09),vec3(.045,.16,.19),u_daylight);
+    vec3 water=mix(deep,reflected,.18+fresnel*.44);
+    water*=.87+.13*ripple;
+    float width=.014+depth*.16;
+    float wander=sin(perspective*3.7+travel*.3)*width*.26;
+    float reflection=exp(-pow((p.x-lightPos.x+wander)/width,2.0));
+    float glint=smoothstep(.30,.94,ripple*.6+detail*.4);
+    vec3 light=mix(vec3(.55,.67,.78),u_glowColor,u_daylight);
+    water+=light*reflection*glint*(.13+u_daylight*.33)*(1.0-u_coverage*.7);
+    float crests=smoothstep(.69,.92,ripple)*smoothstep(.35,.8,detail);
+    water+=mix(u_color2,vec3(.50,.68,.68),u_daylight)*crests*depth*.13;
+    // Near-horizon haze remains thin enough to retain a readable waterline.
     water=mix(water,u_color4*(.38+.62*u_daylight),exp(-depth*34.0)*.35);
     return mix(sky,water,smoothstep(horizon,horizon+1.0/u_canvas.y,p.y));
 }
@@ -213,28 +224,32 @@ vec3 dwLandscape(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
     vec3 horizon=u_color4*mix(.38,1.0,u_daylight);
     float cloudShadow=dwCloudShadow(p,lightPos)*mix(.12,.45,u_daylight);
     float aa=max(.0005,1.0/u_canvas.y);
-    for(int i=0;i<3;i++) {
-        float layer=float(i);
+    for(int i=0;i<5;i++) {
+        // Five receding ranges suggest the long overlapping ridges of the Smokies.
+        float layer=float(i)*.5;
         float ridge=dwRidge(p.x,layer,height,terrain.x);
-        if(i==2 && terrain.x<1.5) {
-            // A distant, irregular treeline, fixed to the landscape, not the wind.
-            float grove=smoothstep(.25,.65,dwNoise(vec2(p.x*4.0,17.3)));
-            ridge-=dwNoise(vec2(p.x*85.0,7.9))*.021*grove;
+        if(terrain.x<1.5) {
+            // Woodland follows the contours in groves, with open meadow between.
+            float grove=smoothstep(.30,.63,dwNoise(vec2(p.x*3.8,17.3+layer*5.0)));
+            float crowns=dwNoise(vec2(p.x*(95.0+layer*46.0),7.9+layer));
+            float twigs=dwNoise(vec2(p.x*380.0,layer*11.0));
+            ridge-=(.003+crowns*.010+twigs*.002)*grove*(.5+layer*.28);
         }
-        float fog=(.6-layer*.23)*(.65+mist*.7);
+        float fog=(.72-layer*.28)*(.65+mist*.55);
         // Slower, depth-separated ground wisps use the same wind as the clouds.
         // Their strength is art direction; it does not claim measured fog.
         if(mist>.001) {
             vec2 mistPoint=vec2(p.x*(2.8+layer),p.y*(12.0-layer*2.0));
             float wisp=dwNoise(mistPoint-u_flow*(.6+layer*.25)+layer*8.7);
-            fog+=mist*.15*(1.0-layer*.3)*smoothstep(.35,.75,wisp);
+            float valley=exp(-max(0.0,p.y-ridge)*38.0);
+            fog+=mist*.22*(1.0-layer*.25)*smoothstep(.3,.72,wisp)*valley;
         }
-        float slope=(cos(p.x*2.0+layer*2.0)*.09+
-            cos(p.x*5.3+layer*3.0)*.0954+cos(p.x*11.0+layer)*.066)*height/.2;
+        float faceX=p.x+(p.y-ridge)*.55;
+        float slope=(dwRidge(faceX+.006,layer,height,terrain.x)-
+            dwRidge(faceX-.006,layer,height,terrain.x))/.012;
         if(terrain.x>1.5) {
             // Spread the normal over a small face area, avoiding vertical
             // lighting stripes at the mathematical cusp of a distant peak.
-            float faceX=p.x+(p.y-ridge)*.55;
             slope=(dwRidge(faceX+.025,layer,height,terrain.x)-
                 dwRidge(faceX-.025,layer,height,terrain.x))/.05;
         }
@@ -243,24 +258,52 @@ vec3 dwLandscape(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
         float diffuse=max(0.0,dot(normal,lightDirection));
         vec3 ground=shadow*(.76+.24*diffuse)*(1.0-cloudShadow);
         vec3 pigment=mix(ground,horizon,fog);
-        if(terrain.x>1.5 && terrain.x<2.5) {
+        if(terrain.x<1.5) {
+            float depth=clamp((p.y-ridge)/(.065+layer*.025),0.0,1.0);
+            float fold=dwNoise(vec2(faceX*19.0+layer*11.0,p.y*9.0));
+            float meadow=dwNoise(vec2(p.x*145.0,p.y*390.0)+layer*27.0);
+            float thicket=dwNoise(vec2(p.x*57.0,p.y*105.0)+layer*9.0);
+            vec3 green=mix(vec3(.023,.042,.058),vec3(.12,.22,.19),u_daylight);
+            vec3 earth=mix(u_color0*.26,vec3(.20,.25,.19),u_daylight);
+            vec3 material=mix(green,earth,smoothstep(.40,.82,fold)*.45);
+            material*=.66+diffuse*.30+thicket*.17;
+            material*=1.0-cloudShadow;
+            float air=clamp(fog+exp(-depth*4.0)*mist*.12,0.0,.9);
+            vec3 blueAir=mix(horizon,u_color2*mix(.30,.82,u_daylight),.48);
+            pigment=mix(material,blueAir,air);
+            // Detail diminishes into the blue atmospheric distance.
+            pigment*=1.0+(meadow*.08+thicket*.06-.07)*(1.0-air);
+            // Fine grass flecks emerge toward the viewer, never in the sky.
+            float blades=pow(dwNoise(vec2(p.x*520.0,p.y*140.0)),5.0);
+            pigment+=vec3(.035,.037,.018)*blades*depth*layer*u_daylight;
+        } else if(terrain.x>1.5 && terrain.x<2.5) {
             // Altitude-shaped snowline, cut by exposed rock; mountain faces
             // inherit the same sun direction and cloud shadows as the hills.
-            float snowline=1.0-height+.025+layer*.065+sin(p.x*31.0)*.007;
-            float snow=(1.0-smoothstep(snowline-.008,snowline+.008,p.y));
-            vec3 snowColor=mix(u_color2,u_color4,.68)*(.45+.55*u_daylight);
-            snowColor*= (.72+.28*diffuse)*(1.0-cloudShadow*.65);
-            pigment=mix(pigment,snowColor,snow*.9);
-            float rock=dwNoise(vec2(p.x*170.0,p.y*260.0)+layer*31.0);
-            float gullies=dwNoise(vec2((p.x+(p.y-ridge)*.45)*85.0,p.y*20.0));
-            pigment*=.65+.23*diffuse+.18*rock+.18*gullies;
+            float altitude=1.0-height+.035+layer*.065-p.y;
+            float gully=dwNoise(vec2((p.x+(p.y-ridge)*.65)*78.0,p.y*16.0)+layer*17.0);
+            float rock=dwNoise(vec2(p.x*190.0,p.y*310.0)+layer*31.0);
+            float snow=smoothstep(-.014,.017,altitude+(gully-.5)*.035);
+            snow*=smoothstep(.14,.35,gully+altitude*3.0);
+            vec3 stone=mix(vec3(.045,.060,.085),vec3(.27,.29,.30),u_daylight);
+            stone*=.55+.45*diffuse+rock*.12+gully*.12;
+            vec3 snowColor=mix(vec3(.19,.26,.38),vec3(.85,.90,.92),u_daylight);
+            snowColor*=.68+.32*diffuse;
+            vec3 mountain=mix(stone,snowColor,snow*.94)*(1.0-cloudShadow*.8);
+            pigment=mix(mountain,horizon,clamp(fog,0.0,.85));
         } else if(terrain.x>2.5) {
-            vec3 sand=mix(u_color4,vec3(.78,.46,.22),.38)*(.22+.58*u_daylight);
-            pigment=mix(pigment,sand,.42)*( .8+.2*diffuse);
-            float crest=exp(-max(0.0,p.y-ridge)*170.0);
-            pigment+=u_color4*crest*(.03+.08*u_daylight);
-            float ripples=sin(p.y*900.0+sin(p.x*3.0)*8.0)*.012;
-            pigment+=ripples*u_daylight*smoothstep(ridge+.015,ridge+.1,p.y);
+            float depth=max(0.0,p.y-ridge);
+            vec3 sand=mix(vec3(.075,.060,.058),vec3(.66,.42,.23),u_daylight);
+            float face=clamp(.5+slope*3.0,0.0,1.0);
+            vec3 dune=sand*(.60+diffuse*.25+face*.30)*(1.0-cloudShadow);
+            pigment=mix(dune,horizon,clamp(fog*.78,0.0,.85));
+            float crest=exp(-depth*230.0);
+            pigment+=u_color4*crest*(.025+.075*u_daylight);
+            // Wind-combed ridges wrap around dune faces; distant sand stays smooth.
+            float curve=p.y*1050.0+sin(p.x*5.0)*13.0+dwNoise(vec2(p.x*7.0,p.y*23.0))*5.0;
+            float ripples=sin(curve)*.5+.5;
+            float grain=dwNoise(p*vec2(750.0,510.0))-.5;
+            pigment*=1.0+(ripples-.5)*.065*smoothstep(.01,.12,depth)*u_daylight;
+            pigment+=grain*.014*u_daylight*(1.0-fog);
         }
         pigment+=u_accent*.015*(1.0-layer*.3)*u_daylight;
         float silhouette=smoothstep(ridge-aa,ridge+aa,p.y);
@@ -273,7 +316,9 @@ float dwLivingSegment(vec2 p,vec2 a,vec2 b) {
 }
 float dwLivingRidge(vec2 p,vec3 terrain) {
  if(terrain.x>3.5)return 1.0-terrain.y;
- return min(dwRidge(p.x,0.0,terrain.y,terrain.x),min(dwRidge(p.x,1.0,terrain.y,terrain.x),dwRidge(p.x,2.0,terrain.y,terrain.x)));
+ float ridge=1.0;
+ for(int i=0;i<5;i++) ridge=min(ridge,dwRidge(p.x,float(i)*.5,terrain.y,terrain.x));
+ return ridge;
 }
 vec3 dwLivingSurface(vec3 sky,vec2 p,vec3 terrain) {
  if(terrain.x<.5)return sky;
@@ -288,28 +333,98 @@ vec3 dwLivingSurface(vec3 sky,vec2 p,vec3 terrain) {
  vec3 snowColor=mix(vec3(.22,.29,.40),vec3(.88,.93,.95),u_daylight);
  return mix(sky,snowColor,ground*snow*settled*.93);
 }
+// Tapered branches retain fine tips instead of a constant-width stick glyph.
+float dwBranch(vec2 p,vec2 a,vec2 b,float root,float tip,float aa) {
+    vec2 v=b-a;
+    float t=clamp(dot(p-a,v)/max(dot(v,v),.000001),0.0,1.0);
+    return 1.0-smoothstep(mix(root,tip,t)-aa,mix(root,tip,t)+aa,length(p-a-v*t));
+}
+vec3 dwTree(vec3 sky,vec2 p,float center,float base,float height,float seed,float air) {
+    vec2 q=(p-vec2(center,base))/height;
+    if(abs(q.x)>.95 || q.y>0.03 || q.y< -1.45) return sky;
+    float aa=max(.006,1.0/(u_canvas.y*height));
+    float lean=(seed-.5)*.20;
+    float conifer=step(.76,seed);
+    float wood=dwBranch(q,vec2(0,0),vec2(lean,-1.02),.037,.003,aa);
+    float crown=0.0,shade=0.0;
+    if(conifer>.5) {
+        // Unequal bough tiers and a ragged edge distinguish pine from broadleaf.
+        float tier=floor(clamp(-q.y,0.0,1.0)*9.0);
+        float spread=(1.0+q.y)*.39;
+        spread*=.75+.25*fract(-q.y*9.0+seed*3.0);
+        float edge=abs(q.x-lean*(-q.y))-(spread+.014*dwNoise(q*70.0));
+        crown=(1.0-smoothstep(-aa,aa,edge))*(1.0-smoothstep(-.25,-.12,q.y))*
+            smoothstep(-1.08,-.97,q.y);
+        shade=.4+.3*sin(tier*1.7+seed*7.0)+q.x*.4;
+    } else {
+        // Each branch splits into asymmetric twigs; foliage is a cluster union.
+        for(int j=0;j<7;j++) {
+            float k=float(j),r=dwHash(vec2(seed*87.0,k+31.0));
+            float side=mod(k,2.0)*2.0-1.0;
+            vec2 start=vec2(lean*(.32+k*.075),-(.32+k*.075));
+            vec2 end=vec2(side*(.22+r*.22)+lean,-(.58+k*.055+r*.11));
+            vec2 elbow=mix(start,end,.53)+vec2(side*.018,.035);
+            wood=max(wood,dwBranch(q,start,elbow,.018-k*.0014,.010-k*.0008,aa));
+            wood=max(wood,dwBranch(q,elbow,end,.010-k*.0008,.002,aa));
+            vec2 tip=end+vec2(side*(.065+r*.065),-.12-r*.10);
+            wood=max(wood,dwBranch(q,mix(elbow,end,.65),tip,.006,.001,aa));
+            vec2 fork=end+vec2(-side*.07,-.12);
+            wood=max(wood,dwBranch(q,mix(elbow,end,.8),fork,.005,.001,aa));
+            vec2 leafCenter=end+vec2(-side*.025,-.04);
+            vec2 shape=(q-leafCenter)/vec2(.19+r*.08,.17+r*.07);
+            float edge=length(shape)-1.0;
+            edge+=(dwNoise(q*38.0+seed*71.0)-.5)*.23;
+            float cluster=1.0-smoothstep(-aa*3.0,aa*3.0,edge);
+            if(cluster>crown) shade=r*.55+q.x*.3-q.y*.16;
+            crown=max(crown,cluster);
+        }
+        vec2 leader=(q-vec2(lean,-1.02))/vec2(.21+seed*.05,.23);
+        float leaderEdge=length(leader)-1.0+(dwNoise(q*38.0+seed*71.0)-.5)*.23;
+        float leaderCrown=1.0-smoothstep(-aa*3.0,aa*3.0,leaderEdge);
+        if(leaderCrown>crown) shade=.42;
+        crown=max(crown,leaderCrown);
+        float foliage=clamp(u_season.y*.90+u_season.z+u_season.w*.73,0.0,1.0);
+        // Autumn opens small gaps between leaf masses; winter exposes twigs.
+        float gaps=smoothstep(.12,.34,dwNoise(q*31.0+seed*41.0)+foliage*.25);
+        crown*=foliage*gaps;
+    }
+    vec3 haze=u_color4*mix(.30,.83,u_daylight);
+    vec3 bark=mix(vec3(.020,.026,.037),vec3(.15,.12,.085),u_daylight);
+    bark*=1.0-u_surface.y*.2;
+    sky=mix(sky,mix(bark,haze,air),wood);
+    vec3 leafColor=vec3(.18,.31,.17)*u_season.y+vec3(.10,.23,.15)*u_season.z+
+        mix(vec3(.34,.17,.055),vec3(.52,.32,.10),seed)*u_season.w;
+    if(conifer>.5) leafColor=vec3(.09,.19,.16);
+    float leafDetail=dwNoise(q*23.0+seed*31.0)*.7+dwNoise(q*71.0)*.3;
+    leafColor*=mix(.19,1.0,u_daylight)*(.58+shade*.32+leafDetail*.34);
+    leafColor*=1.0-u_surface.y*.18;
+    // Snow catches exposed crown edges and pine boughs, retaining dark pockets.
+    float snow=u_surface.x*smoothstep(.45,.75,dwNoise(q*25.0)+shade*.3);
+    leafColor=mix(leafColor,mix(vec3(.16,.21,.30),vec3(.80,.86,.88),u_daylight),snow*.85);
+    return mix(sky,mix(leafColor,haze,air),crown);
+}
 vec3 dwLivingSeason(vec3 sky,vec2 p,vec3 terrain) {
- if(terrain.x<.5||terrain.x>2.5)return sky;
- float ridge=dwLivingRidge(p,terrain),ground=smoothstep(ridge,ridge+.008,p.y);
- vec3 tint=vec3(1.0)+u_season.x*vec3(-.07,-.02,.08)+u_season.y*vec3(-.03,.07,-.02)+u_season.w*vec3(.13,-.01,-.10);
- sky=mix(sky,sky*tint,ground*.65);
- float cell=floor(p.x*18.0),seed=dwHash(vec2(cell,71.3)),center=(cell+.3+seed*.35)/18.0;
- if(seed<.35)return sky;
- float base=dwRidge(center,1.0,terrain.y,terrain.x)+.025,height=.035+seed*.035,width=.0008+seed*.0004;
- vec2 a=vec2(center,base),top=vec2(center,base-height);
- float branch=dwLivingSegment(p,a,top);
- branch=min(branch,dwLivingSegment(p,vec2(center,base-height*.43),vec2(center-.014,base-height*.79)));
- branch=min(branch,dwLivingSegment(p,vec2(center,base-height*.56),vec2(center+.013,base-height*.88)));
- float wood=1.0-smoothstep(width,width+.0011,branch);
- vec3 woodColor=mix(vec3(.025,.035,.05),vec3(.16,.15,.12),u_daylight);
- sky=mix(sky,woodColor,wood*.83);
- float foliage=clamp(u_season.y*.78+u_season.z+u_season.w*.45,0.0,1.0);
- vec2 canopy=(p-vec2(center,base-height*.83))/vec2(.018,height*.39);
- float leaf=1.0-smoothstep(.72,1.08,length(canopy));
- leaf*=smoothstep(.12,.55,dwNoise(p*160.0)+foliage*.45)*foliage;
- vec3 leafColor=vec3(.20,.34,.19)*u_season.y+vec3(.12,.25,.17)*u_season.z+vec3(.49,.25,.11)*u_season.w;
- leafColor*=.35+.65*u_daylight;
- return mix(sky,leafColor,leaf*.86);
+    if(terrain.x<.5||terrain.x>2.5) return sky;
+    float ridge=dwLivingRidge(p,terrain),ground=smoothstep(ridge,ridge+.008,p.y);
+    vec3 tint=vec3(1.0)+u_season.x*vec3(-.07,-.02,.08)+
+        u_season.y*vec3(-.03,.07,-.02)+u_season.w*vec3(.13,-.01,-.10);
+    sky=mix(sky,sky*tint,ground*.65*(1.0-u_surface.x));
+    for(int row=0;row<2;row++) {
+        float layer=float(row),frequency=mix(16.0,8.5,layer);
+        float cell=floor(p.x*frequency);
+        // Adjacent cells are evaluated so crowns never clip at a cell boundary.
+        for(int n=-1;n<=1;n++) {
+            float id=cell+float(n),seed=dwHash(vec2(id,71.3+layer*29.0));
+            float center=(id+.18+seed*.64)/frequency;
+            float grove=dwNoise(vec2(center*3.1,15.7+layer));
+            if(seed<.15 || grove<.33) continue;
+            float base=dwRidge(center,layer+1.0,terrain.y,terrain.x)+.014;
+            float height=(.030+pow(seed,.65)*.056)*mix(.72,1.1,layer);
+            float air=(.22-layer*.15)*(.6+terrain.z*.8);
+            sky=dwTree(sky,p,center,base,height,seed,air);
+        }
+    }
+    return sky;
 }
 vec3 dwLivingMoments(vec3 sky,vec2 p) {
  float aspect=u_canvas.x/max(1.0,u_canvas.y),phase=clamp(u_birds.y,0.0,1.0),seed=u_birds.z;
