@@ -1,0 +1,23 @@
+{
+  "destination": "/home/rucaradio/.local/share/gnome-shell/extensions/dynwall@rucaradio",
+  "backup": "/home/rucaradio/.local/state/dynwall-upgrades/20261101T033152-living-environment",
+  "verified": true,
+  "files": {
+    "shader.js": "26dec5d608ad54b9dd83ba3226feb86760daf2faad27dc635ce54038add1525b",
+    "weather.glsl": "a3eaeb45b78dd1f0b72de0bdd6c851a8607fa151575bacec41e247f9e22c8fef",
+    "uniforms.js": "eee30a2747214fa90a7a0f403c3571098e85c00bb70a30a8cf65a72bb76f34b0",
+    "seasonal.js": "ce1cf1a90b09d61c921cf18f4e4fb1ca459edc6f97201579ab89ef1c35df89de",
+    "lifecycle.js": "6b09989079c0ce280f39d2128bcc2298a10b6aa83801145289f3e53d150273d0",
+    "presentation.js": "379e9e3f6a9c8ba33168ee4f4952b03e310d0ad34c56e10c9b2183c6d616071f",
+    "extension.js": "0b575c5b362af768e84a000f4ad89f463c4aab2fb5a176b181aa9c20bd76905c",
+    "living.js": "0b7d849139d16560f263938db12bfc9572bbbc3f85d8e106432bb47c9b5e7847",
+    "README.md": "ee050b9f5c05f3063b20cade1ab821a2d449e73c7f7c9ddd5c0c6d88a1892f5d",
+    "metadata.json": "0b920dd7b91e0ed018f1c419b1142b9b5663bf1293af0ccc489cf9998c83f5ba",
+    "state.js": "a3bfb8309c65b34384eb94d625d3173dcbceb2c6b78159030697365ba8c31e8c"
+  },
+  "launchers": {
+    "dynwall": "/home/rucaradio/dynwall/dynwall",
+    "dynwall-settings": "/home/rucaradio/dynwall/dynwall-settings"
+  },
+  "session_reload": "Normal logout/login required for cached GNOME modules; no restart or preference changes performed."
+}

@@ -1,0 +1,207 @@
+{
+  "renderer": "Quadro M6000/PCIe/SSE2",
+  "quality": "balanced",
+  "width": 3840,
+  "height": 1080,
+  "frame_timing_samples_ms": {
+    "day": [
+      2.94,
+      2.91,
+      2.93,
+      2.89,
+      2.96
+    ],
+    "overcast": [
+      2.89,
+      2.92,
+      2.92,
+      2.93,
+      2.91
+    ],
+    "rain": [
+      3.13,
+      3.46,
+      3.16,
+      3.12,
+      3.15
+    ],
+    "snow": [
+      3.11,
+      3.13,
+      3.15,
+      3.11,
+      3.13
+    ],
+    "night": [
+      3.23,
+      3.22,
+      3.24,
+      3.23,
+      3.22
+    ],
+    "night-clear": [
+      0.65,
+      0.68,
+      0.66,
+      0.62,
+      0.62
+    ],
+    "night-overcast": [
+      3.25,
+      3.22,
+      3.24,
+      3.23,
+      3.23
+    ]
+  },
+  "median_frame_ms": {
+    "day": 2.93,
+    "overcast": 2.92,
+    "rain": 3.15,
+    "snow": 3.13,
+    "night": 3.23,
+    "night-clear": 0.65,
+    "night-overcast": 3.23
+  },
+  "motion_pixel_delta": 3.1069731385030863,
+  "star_signal_clear_overcast": {
+    "0": 0.22493706597222224,
+    "1": 0.001433497299382716
+  },
+  "rain_direction_error": {
+    "5": {
+      "with_wind": 3.4967637124420246,
+      "against_wind": 10.4561383343416
+    },
+    "-5": {
+      "with_wind": 3.4718368118572296,
+      "against_wind": 10.397768451300665
+    }
+  },
+  "monitor_partition_pixel_delta": [
+    0.0,
+    0.00022183641975308642
+  ],
+  "production_shader": "extension/weather.glsl",
+  "shader_sha256": "933bdb116d0410b9327726901f7b6334cb9fe49d87d386a9fd20e550a1609b94",
+  "alternating_before_after": {
+    "before": {
+      "day": {
+        "samples_ms": [
+          3.01,
+          4.03,
+          3.03
+        ],
+        "median_ms": 3.03
+      },
+      "overcast": {
+        "samples_ms": [
+          3.05,
+          3.36,
+          3.01
+        ],
+        "median_ms": 3.05
+      },
+      "rain": {
+        "samples_ms": [
+          3.22,
+          3.22,
+          3.22
+        ],
+        "median_ms": 3.22
+      },
+      "snow": {
+        "samples_ms": [
+          3.23,
+          3.61,
+          3.27
+        ],
+        "median_ms": 3.27
+      },
+      "night": {
+        "samples_ms": [
+          3.21,
+          3.55,
+          3.21
+        ],
+        "median_ms": 3.21
+      },
+      "night-clear": {
+        "samples_ms": [
+          0.61,
+          0.61,
+          0.61
+        ],
+        "median_ms": 0.61
+      },
+      "night-overcast": {
+        "samples_ms": [
+          3.2,
+          3.54,
+          3.23
+        ],
+        "median_ms": 3.23
+      }
+    },
+    "after": {
+      "day": {
+        "samples_ms": [
+          2.94,
+          3.27,
+          2.93
+        ],
+        "median_ms": 2.94
+      },
+      "overcast": {
+        "samples_ms": [
+          2.98,
+          2.95,
+          2.92
+        ],
+        "median_ms": 2.95
+      },
+      "rain": {
+        "samples_ms": [
+          3.12,
+          3.15,
+          3.13
+        ],
+        "median_ms": 3.13
+      },
+      "snow": {
+        "samples_ms": [
+          3.15,
+          3.14,
+          3.16
+        ],
+        "median_ms": 3.15
+      },
+      "night": {
+        "samples_ms": [
+          3.59,
+          3.25,
+          3.26
+        ],
+        "median_ms": 3.26
+      },
+      "night-clear": {
+        "samples_ms": [
+          0.64,
+          0.66,
+          0.62
+        ],
+        "median_ms": 0.64
+      },
+      "night-overcast": {
+        "samples_ms": [
+          3.59,
+          3.24,
+          3.24
+        ],
+        "median_ms": 3.24
+      }
+    }
+  },
+  "exact_reference_images_passed": true,
+  "scope": "Isolated EGL rendering, not live desktop CPU/GPU utilization or power."
+}

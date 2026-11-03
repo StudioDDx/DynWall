@@ -1,0 +1,89 @@
+{
+  "renderer": "Quadro M6000/PCIe/SSE2",
+  "quality": "balanced",
+  "width": 3840,
+  "height": 1080,
+  "frame_timing_samples_ms": {
+    "day": [
+      4.57,
+      4.86,
+      4.67
+    ],
+    "overcast": [
+      4.31,
+      4.03,
+      4.33
+    ],
+    "rain": [
+      4.24,
+      4.52,
+      4.8
+    ],
+    "snow": [
+      5.67,
+      6.03,
+      5.2
+    ],
+    "night": [
+      4.5,
+      4.9,
+      4.92
+    ],
+    "night-clear": [
+      0.83,
+      1.59,
+      1.2
+    ],
+    "night-overcast": [
+      5.11,
+      5.0,
+      6.3
+    ]
+  },
+  "median_frame_ms": {
+    "day": 4.67,
+    "overcast": 4.31,
+    "rain": 4.52,
+    "snow": 5.67,
+    "night": 4.9,
+    "night-clear": 1.2,
+    "night-overcast": 5.11
+  },
+  "motion_pixel_delta": 3.1069731385030863,
+  "star_signal_clear_overcast": {
+    "0": 0.22493706597222224,
+    "1": 0.001433497299382716
+  },
+  "rain_direction_error": {
+    "5": {
+      "with_wind": 3.4967637124420246,
+      "against_wind": 10.4561383343416
+    },
+    "-5": {
+      "with_wind": 3.4718368118572296,
+      "against_wind": 10.397768451300665
+    }
+  },
+  "monitor_partition_pixel_delta": [
+    0.0,
+    0.00022183641975308642
+  ],
+  "leaf_signal": 1.318159079218107,
+  "leaf_direction_error": {
+    "1": {
+      "with_wind": 1.2677781302618414,
+      "against_wind": 6.258471412186729
+    },
+    "-1": {
+      "with_wind": 1.204633104760975,
+      "against_wind": 5.811176212206252
+    }
+  },
+  "isolated_gust_frame_samples_ms": [
+    1.05,
+    0.45,
+    1.39
+  ],
+  "isolated_gust_median_frame_ms": 1.05,
+  "production_shader": "extension/weather.glsl"
+}

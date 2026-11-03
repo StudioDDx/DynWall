@@ -1,11 +1,10 @@
 [Unit]
-Description=Play dynamic wallpaper animation loop
+Description=Retired Dynwall image player (use the GNOME GPU extension)
 After=graphical-session.target
 
 [Service]
 ExecStart=%h/.local/bin/dynwall --play
-Restart=on-failure
-RestartSec=10
+Restart=no
 
 [Install]
 WantedBy=graphical-session.target

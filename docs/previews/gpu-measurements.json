@@ -1,0 +1,36 @@
+{
+  "renderer": "Quadro M6000/PCIe/SSE2",
+  "quality": "balanced",
+  "width": 3840,
+  "height": 1080,
+  "mean_frame_ms": {
+    "day": 3.49,
+    "overcast": 3.49,
+    "rain": 3.72,
+    "snow": 3.75,
+    "night": 3.71,
+    "night-clear": 0.71,
+    "night-overcast": 4.22
+  },
+  "motion_pixel_delta": 3.1069731385030863,
+  "star_signal_clear_overcast": {
+    "0": 0.22493706597222224,
+    "1": 0.001433497299382716
+  },
+  "rain_direction_error": {
+    "5": {
+      "with_wind": 3.4967637124420246,
+      "against_wind": 10.4561383343416
+    },
+    "-5": {
+      "with_wind": 3.4718368118572296,
+      "against_wind": 10.397768451300665
+    }
+  },
+  "monitor_partition_pixel_delta": [
+    0.0,
+    0.00022183641975308642
+  ],
+  "production_shader": "extension/weather.glsl",
+  "shader_sha256": "98489f8b4dfbf60a46d9a3e2f2e1f8758f56914d1685248e796751b8aebccc69"
+}

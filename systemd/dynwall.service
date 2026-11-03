@@ -1,7 +1,7 @@
 [Unit]
-Description=Generate dynamic wallpaper animation frames
+Description=Refresh Dynwall static sky and GPU scene state
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/dynwall --animate 24
+ExecStart=%h/.local/bin/dynwall
 EnvironmentFile=-%h/.config/dynwall/env

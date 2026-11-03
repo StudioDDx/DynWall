@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "woodland",
+  "name": "Woodland River",
+  "horizon": 0.72,
+  "foreground": "foreground.png",
+  "description": "An original illustrated river meadow, layered hills, pine grove and open-canopy oak. Transparent sky for native weather animation.",
+  "author": "DynWall local illustration",
+  "license": "CC0-1.0"
+}

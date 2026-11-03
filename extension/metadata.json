@@ -1,0 +1,7 @@
+{
+  "uuid": "dynwall@rucaradio",
+  "name": "Dynwall GPU Weather",
+  "description": "Native animated weather behind the desktop, driven by Dynwall and TopWeather. The static wallpaper remains the fallback.",
+  "shell-version": ["50"],
+  "version": 1
+}

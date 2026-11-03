@@ -1,0 +1,1 @@
+(true, '{"targetCoverage":0.65,"scenePath":"/tmp/dynwall-living-smoke-20261101-0849/cache/dynwall/scene.json","sceneEnabled":true,"scene":true,"target":true,"locked":false,"suspended":false,"overview":false,"overviewAnimation":false,"animations":true,"monitors":2,"running":false,"effects":2,"groups":1,"visible":false}')

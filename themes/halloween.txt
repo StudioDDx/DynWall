@@ -1,0 +1,31 @@
+WITCHING HOUR — a haunted Halloween landscape for a living desktop.
+
+Make the atmosphere unmistakably spooky, cinematic and beautiful: midnight ink,
+blackberry purple, bruised violet, and a narrow smoldering pumpkin-orange horizon.
+Think of the last light beyond a haunted woodland, with deep layers of shadow
+and a spectral moon glowing through wind-driven clouds. Keep the upper sky dark
+and spacious so desktop icons stay readable. This is atmospheric folk horror,
+not a bright orange novelty background.
+
+Use five gradient stops. At night, favor #080611, #180d29, #352041, #713b4b,
+and #be6839, with the orange confined to the lowest tenth of the sky. Use a warm
+ember accent such as #f39238. Put a larger-than-usual silver moon at x=0.76,
+y=0.27, size=0.065, with a dim burnt-orange glow (#e87832), intensity about
+0.35, size about 0.65 and an almost imperceptible pulse of 0.025. Keep drift
+very slow (0.002). Give the existing irregular treeline a haunted silhouette
+with layered hills, height around 0.26, and generous violet mist (0.8).
+Use sparse, faint stars (around 65), no geometric mesh, subtle grain (0.01),
+and a gentle vignette (0.28). Name the scene Witching Hour or another evocative
+Halloween title. Let real clouds veil the moon and existing autumn gusts carry
+their amber leaves through the scene.
+
+Adapt within this Halloween color story as the local time changes: ghostly
+lavender dawn, overcast plum and copper daylight, ember-lit dusk, haunted violet
+night. Keep the theme through October 31 inclusive. From November 1 onward,
+return to a natural time-aware seasonal landscape with restrained color,
+layered hills and soft light, without the Halloween direction above.
+
+Use only the renderer's supported controls. Do not request pumpkins, bats,
+buildings, text, lightning or other objects the renderer cannot draw. Weather
+measurements and motion come from the engine; do not invent precipitation or
+cloud cover. Preserve calm motion and comfortable contrast.

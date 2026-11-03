@@ -1,0 +1,14 @@
+{
+  "title": "Witching Hour",
+  "gradient": ["#080611", "#180d29", "#352041", "#713b4b", "#be6839"],
+  "gradient_positions": [0.0, 0.36, 0.7, 0.9, 1.0],
+  "accent": "#f39238",
+  "glow": {"color": "#e87832", "x": 0.76, "y": 0.27, "size": 0.65, "intensity": 0.35, "pulse": 0.025},
+  "celestial": {"type": "moon", "x": 0.76, "y": 0.27, "size": 0.065, "drift": 0.002},
+  "landscape": {"style": "hills", "height": 0.26, "mist": 0.8},
+  "stars": 65,
+  "mesh": {"style": "none", "density": 18, "opacity": 0.02},
+  "grain": 0.01,
+  "vignette": 0.28,
+  "mood": "haunted"
+}

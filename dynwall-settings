@@ -6,10 +6,15 @@ Runs with the system python3 (requires PyGObject + GTK4 + libadwaita).
 """
 
 import json
+import math
 import os
-import stat
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
+
+from dynwall_living import normalize_living_config
+from dynwall_living_settings import add_living_controls, collect_living
 
 import gi
 
@@ -18,26 +23,46 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk
 
 APP_ID = "io.github.dynwall.Settings"
-CONFIG_DIR = os.path.expanduser("~/.config/dynwall")
+CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "dynwall")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 BIN_LINK = os.path.expanduser("~/.local/bin/dynwall")
 DYNWALL_CMD = os.path.expanduser("~/.local/bin/dynwall")
+WALLPAPER_PATH = Path(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))) / "dynwall" / "wall.png"
 
 DEFAULTS = {
+    "enabled": True,
     "provider": "openai",
     "api_key": "",
     "model": "",
     "prompt": "",
+    "theme": "",
+    "theme_until": "",
+    "background": "auto",
     "allow_network": True,
     "allow_animation": True,
+    "seasonal_effects": True,
     "frames": 24,
     "frame_seconds": 1.5,
     "width": 3840,
     "height": 1080,
     "mesh_enabled": True,
+    "landscape_enabled": True,
+    "weather_fps": 30,
+    "weather_quality": "balanced",
 }
 
 PROVIDERS = ["openai", "openrouter", "none"]
+BACKGROUNDS = ["auto", "ridges", "alpine", "dunes", "ocean", "sky"]
+BACKGROUND_LABELS = ["Automatic / art director", "Layered Ridges", "Alpine Stillness",
+                     "Amber Dunes", "Tidal Light", "Open Sky"]
+BACKGROUND_DESCRIPTIONS = [
+    "Your AI art direction, offline sky palette, or selected seasonal theme.",
+    "Soft silhouettes, a distant treeline and layers of atmospheric mist.",
+    "Snow-covered peaks, shaded rock faces and cool mountain air.",
+    "Warm sand, sweeping crests and fine ripples under a wide sky.",
+    "An open horizon with wind-driven water and broken sun or moon reflections.",
+    "An uninterrupted sky with the full weather and sun/moon animation.",
+]
 PROVIDER_LABELS = {"openai": "OpenAI", "openrouter": "OpenRouter", "none": "None (offline)"}
 DEFAULT_MODELS = {"openai": "gpt-5.4-nano", "openrouter": "openai/gpt-5.4-nano", "none": ""}
 
@@ -77,28 +102,99 @@ def load_config():
         with open(CONFIG_PATH, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
-            for key in DEFAULTS:
-                if key in data and isinstance(data[key], type(DEFAULTS[key])):
-                    cfg[key] = data[key]
+            cfg.update({key: value for key, value in data.items() if key not in DEFAULTS})
+            for key, default in DEFAULTS.items():
+                value = data.get(key)
+                if type(value) is type(default) or (
+                    type(default) is float and type(value) is int
+                ):
+                    if type(default) is float:
+                        try:
+                            value = float(value)
+                        except OverflowError:
+                            continue
+                        if not math.isfinite(value):
+                            continue
+                    cfg[key] = value
     except (OSError, ValueError):
         pass
     # Clamp numeric ranges.
     cfg["frames"] = max(1, min(120, int(cfg["frames"])))
     cfg["frame_seconds"] = max(0.5, min(10.0, float(cfg["frame_seconds"])))
-    cfg["width"] = max(1, int(cfg["width"]))
-    cfg["height"] = max(1, int(cfg["height"]))
+    cfg["width"] = max(1, min(15360, int(cfg["width"])))
+    cfg["height"] = max(1, min(15360, int(cfg["height"])))
+    cfg["weather_fps"] = max(15, min(60, int(cfg["weather_fps"])))
+    if cfg["weather_quality"] not in ("low", "balanced", "high"):
+        cfg["weather_quality"] = "balanced"
     if cfg["provider"] not in PROVIDERS:
         cfg["provider"] = DEFAULTS["provider"]
-    return cfg
+    if cfg["background"] not in BACKGROUNDS:
+        cfg["background"] = "auto"
+    return normalize_living_config(cfg)
 
 
 def save_config(cfg):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-        f.write("\n")
-    # Config holds the API key — owner-only.
-    os.chmod(CONFIG_PATH, stat.S_IRUSR | stat.S_IWUSR)
+    """Publish a complete, owner-only config while preserving the last good save."""
+    os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
+    temporary_path = None
+    try:
+        # A sibling file keeps replacement atomic; NamedTemporaryFile creates it
+        # with mode 0600 before any API key is written.
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=CONFIG_DIR,
+            prefix=".config.json.", suffix=".tmp", delete=False,
+        ) as f:
+            temporary_path = f.name
+            json.dump(cfg, f, indent=2, allow_nan=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_path, CONFIG_PATH)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            os.unlink(temporary_path)
+
+
+def sync_play_service(enabled: bool) -> bool:
+    """Retire the unsafe legacy player; animation now belongs to the GPU extension."""
+    cmd = ["disable", "--now"]
+    try:
+        r = subprocess.run(["systemctl", "--user", *cmd, "dynwall-play.service"],
+                           capture_output=True, text=True, timeout=15)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def sync_dynwall_state(enabled: bool):
+    """Apply the master state while touching only resources owned by Dynwall."""
+    commands = [
+        ["systemctl", "--user", "enable" if enabled else "disable", "--now", "dynwall.timer"],
+        ["gnome-extensions", "enable" if enabled else "disable", "dynwall@rucaradio"],
+    ]
+    if enabled and WALLPAPER_PATH.is_file():
+        uri = WALLPAPER_PATH.resolve().as_uri()
+        commands.extend([
+            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
+            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri],
+            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"],
+        ])
+    elif not enabled:
+        commands.extend([
+            ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri"],
+            ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri-dark"],
+            ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-options"],
+        ])
+    errors = []
+    for command in commands:
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            if result.returncode:
+                errors.append((result.stderr or result.stdout or "command failed").strip())
+        except (OSError, subprocess.SubprocessError) as error:
+            errors.append(str(error))
+    return not errors, errors
 
 
 class SettingsWindow(Adw.ApplicationWindow):
@@ -108,6 +204,41 @@ class SettingsWindow(Adw.ApplicationWindow):
         self.cfg = load_config()
 
         page = Adw.PreferencesPage()
+
+        master_group = Adw.PreferencesGroup(
+            title="Dynwall",
+            description="The master switch is applied when settings are saved.",
+        )
+        page.add(master_group)
+        self.master_row = Adw.SwitchRow(
+            title="Enable Dynwall",
+            subtitle="Off stops scheduled updates and restores Ubuntu's stock wallpaper",
+        )
+        self.master_row.set_active(self.cfg["enabled"])
+        self.master_row.connect("notify::active", lambda *_: self._update_sensitivity())
+        master_group.add(self.master_row)
+
+        scene_group = Adw.PreferencesGroup(
+            title="Background",
+            description="Built-in scenes follow the time of day and live weather, without an API key. "
+                        "Automatic uses your art director or seasonal theme.",
+        )
+        page.add(scene_group)
+        self.background_row = Adw.ComboRow(title="Scene")
+        self.background_row.set_model(Gtk.StringList.new(BACKGROUND_LABELS))
+        self.background_row.set_selected(BACKGROUNDS.index(self.cfg["background"]))
+        scene_group.add(self.background_row)
+        self.scene_preview = Gtk.Picture(can_shrink=True)
+        self.scene_preview.set_content_fit(Gtk.ContentFit.CONTAIN)
+        self.scene_preview.set_size_request(-1, 200)
+        self.scene_preview.set_alternative_text("Illustrative daytime background preview")
+        scene_group.add(self.scene_preview)
+        self.scene_description = Gtk.Label(xalign=0, wrap=True)
+        self.scene_description.add_css_class("dim-label")
+        self.scene_description.set_margin_top(6)
+        scene_group.add(self.scene_description)
+        self.background_row.connect("notify::selected", self._on_background_changed)
+        self._on_background_changed()
 
         # --- Provider group -------------------------------------------------
         provider_group = Adw.PreferencesGroup(title="AI Provider")
@@ -125,7 +256,7 @@ class SettingsWindow(Adw.ApplicationWindow):
         provider_group.add(self.key_row)
 
         key_note = Gtk.Label(
-            label="Leave empty to fall back to $OPENAI_API_KEY / $OPENROUTER_API_KEY.",
+            label="Uses $OPENAI_API_KEY / $OPENROUTER_API_KEY first. A saved key is an optional fallback.",
             xalign=0,
             wrap=True,
         )
@@ -180,19 +311,26 @@ class SettingsWindow(Adw.ApplicationWindow):
 
         self.network_row = Adw.SwitchRow(
             title="Allow network access",
-            subtitle="Off = no API calls and no weather fetch (pure fallback palette)",
+            subtitle="Off stops Dynwall's API calls; TopWeather's local data remains available",
         )
         self.network_row.set_active(self.cfg["allow_network"])
         self.network_row.connect("notify::active", lambda *_: self._update_sensitivity())
         behavior_group.add(self.network_row)
 
         self.animation_row = Adw.SwitchRow(
-            title="Allow animation",
-            subtitle="Enable frame pre-rendering for animated wallpapers",
+            title="GPU weather animation",
+            subtitle="Moving clouds, precipitation and night sky. Requires the Dynwall GNOME extension",
         )
         self.animation_row.set_active(self.cfg["allow_animation"])
         self.animation_row.connect("notify::active", lambda *_: self._update_sensitivity())
         behavior_group.add(self.animation_row)
+
+        self.seasonal_row = Adw.SwitchRow(
+            title="Seasonal effects",
+            subtitle="Occasional autumn gusts swirl colorful leaves across the sky",
+        )
+        self.seasonal_row.set_active(self.cfg["seasonal_effects"])
+        behavior_group.add(self.seasonal_row)
 
         self.mesh_row = Adw.SwitchRow(
             title="Mesh gradient",
@@ -201,16 +339,23 @@ class SettingsWindow(Adw.ApplicationWindow):
         self.mesh_row.set_active(self.cfg["mesh_enabled"])
         behavior_group.add(self.mesh_row)
 
-        self.frames_row = Adw.SpinRow.new_with_range(1, 120, 1)
-        self.frames_row.set_title("Animation frames")
-        self.frames_row.set_value(self.cfg["frames"])
-        behavior_group.add(self.frames_row)
+        self.landscape_row = Adw.SwitchRow(
+            title="Landscape depth",
+            subtitle="Show the selected scene's terrain or water; turn off for sky only",
+        )
+        self.landscape_row.set_active(self.cfg["landscape_enabled"])
+        behavior_group.add(self.landscape_row)
 
-        self.seconds_row = Adw.SpinRow.new_with_range(0.5, 10.0, 0.1)
-        self.seconds_row.set_title("Seconds per frame")
-        self.seconds_row.set_digits(1)
-        self.seconds_row.set_value(self.cfg["frame_seconds"])
-        behavior_group.add(self.seconds_row)
+        self.fps_row = Adw.SpinRow.new_with_range(15, 60, 1)
+        self.fps_row.set_title("Weather frame rate")
+        self.fps_row.set_subtitle("30 FPS is recommended; higher rates use more GPU power")
+        self.fps_row.set_value(self.cfg["weather_fps"])
+        behavior_group.add(self.fps_row)
+
+        self.quality_row = Adw.ComboRow(title="Cloud detail")
+        self.quality_row.set_model(Gtk.StringList.new(["Low", "Balanced", "High"]))
+        self.quality_row.set_selected(["low", "balanced", "high"].index(self.cfg["weather_quality"]))
+        behavior_group.add(self.quality_row)
 
         # --- Canvas group ---------------------------------------------------
         canvas_group = Adw.PreferencesGroup(title="Canvas")
@@ -226,10 +371,14 @@ class SettingsWindow(Adw.ApplicationWindow):
         self.height_row.set_value(self.cfg["height"])
         canvas_group.add(self.height_row)
 
+        self._living_persist_config = save_config
+        add_living_controls(self, page)
+
         # --- Buttons --------------------------------------------------------
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_child(page)
+        self._living_scroller = scroller
         outer.append(scroller)
 
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -269,35 +418,60 @@ class SettingsWindow(Adw.ApplicationWindow):
         )
 
     def _update_sensitivity(self):
+        enabled = self.master_row.get_active()
         provider = self._selected_provider()
         network = self.network_row.get_active()
-        sensitive = provider != "none" and network
-        self.key_row.set_sensitive(provider != "none")
+        sensitive = enabled and provider != "none" and network
+        self.background_row.set_sensitive(enabled)
+        self.network_row.set_sensitive(enabled)
+        self.animation_row.set_sensitive(enabled)
+        self.key_row.set_sensitive(enabled and provider != "none")
         self.model_row.set_sensitive(sensitive)
-        self.frames_row.set_sensitive(self.animation_row.get_active())
-        self.seconds_row.set_sensitive(self.animation_row.get_active())
+        self.fps_row.set_sensitive(enabled and self.animation_row.get_active())
+        self.quality_row.set_sensitive(enabled and self.animation_row.get_active())
+        self.seasonal_row.set_sensitive(enabled and self.animation_row.get_active())
 
     def _collect(self):
         buf = self.prompt_view.get_buffer()
         cfg = {
+            "enabled": self.master_row.get_active(),
             "provider": self._selected_provider(),
             "api_key": self.key_row.get_text().strip(),
             "model": self.model_row.get_text().strip(),
             "prompt": buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip(),
+            "theme": self.cfg["theme"],
+            "theme_until": self.cfg["theme_until"],
+            "background": BACKGROUNDS[self.background_row.get_selected()],
             "allow_network": self.network_row.get_active(),
             "allow_animation": self.animation_row.get_active(),
-            "frames": int(self.frames_row.get_value()),
-            "frame_seconds": round(float(self.seconds_row.get_value()), 2),
+            "seasonal_effects": self.seasonal_row.get_active(),
+            "frames": self.cfg["frames"],
+            "frame_seconds": self.cfg["frame_seconds"],
+            "weather_fps": int(self.fps_row.get_value()),
+            "weather_quality": ["low", "balanced", "high"][self.quality_row.get_selected()],
             "width": int(self.width_row.get_value()),
             "height": int(self.height_row.get_value()),
             "mesh_enabled": self.mesh_row.get_active(),
+            "landscape_enabled": self.landscape_row.get_active(),
         }
-        return cfg
+        cfg = {**self.cfg, **cfg}
+        return collect_living(self, cfg) if getattr(self, "_living_ready", False) else cfg
 
     def _toast(self, msg):
         self.toast_overlay.add_toast(Adw.Toast(title=msg, timeout=3))
 
     # --- callbacks ----------------------------------------------------------
+
+    def _on_background_changed(self, *_):
+        selected = self.background_row.get_selected()
+        name = BACKGROUNDS[selected]
+        repo = find_repo_dir()
+        preview = os.path.join(repo, "docs", "previews", "scenes", f"{name}-day.jpg") if repo else ""
+        self.scene_preview.set_visible(os.path.isfile(preview))
+        if os.path.isfile(preview):
+            self.scene_preview.set_filename(preview)
+        self.scene_description.set_text(BACKGROUND_DESCRIPTIONS[selected] +
+                                       " Preview shows illustrative daytime weather.")
 
     def _on_provider_changed(self, *_):
         self._update_model_placeholder()
@@ -311,11 +485,11 @@ class SettingsWindow(Adw.ApplicationWindow):
         self.prompt_view.get_buffer().set_text(text.rstrip("\n"))
         self._toast("Default prompt loaded — press Save to apply")
 
-    def _do_save(self):
+    def _do_save(self, refresh_scene=True):
         cfg = self._collect()
         try:
             save_config(cfg)
-        except OSError as exc:
+        except (OSError, ValueError, TypeError) as exc:
             dialog = Adw.MessageDialog(
                 transient_for=self,
                 heading="Could not save settings",
@@ -324,23 +498,35 @@ class SettingsWindow(Adw.ApplicationWindow):
             dialog.add_response("ok", "OK")
             dialog.present()
             return False
+        if not sync_play_service(cfg["allow_animation"]):
+            self._toast("Saved, but could not stop the legacy animation service")
+        state_ok, state_errors = sync_dynwall_state(cfg["enabled"])
+        if not state_ok:
+            self._toast("Saved, but desktop state could not fully update: " + state_errors[0][-160:])
         self.cfg = cfg
+        if refresh_scene and cfg["enabled"]:
+            try:
+                subprocess.Popen([DYNWALL_CMD, "--refresh-scene"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+            except OSError as exc:
+                self._toast(f"Saved, but GPU state could not refresh: {exc}")
         return True
 
     def _on_save(self, _btn):
         if self._do_save():
-            self._toast("Settings saved")
+            self._toast("Settings saved" if self.cfg["enabled"] else "Dynwall disabled; Ubuntu wallpaper restored")
 
     def _on_save_and_regen(self, btn):
-        if not self._do_save():
+        if not self._do_save(refresh_scene=False):
+            return
+        if not self.cfg["enabled"]:
+            self._toast("Dynwall disabled; Ubuntu wallpaper restored")
             return
         btn.set_sensitive(False)
         self._toast("Saved — regenerating wallpaper in the background…")
         try:
-            if self.cfg["allow_animation"]:
-                cmd = [DYNWALL_CMD, "--animate", str(self.cfg["frames"])]
-            else:
-                cmd = [DYNWALL_CMD]
+            cmd = [DYNWALL_CMD]
             subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,

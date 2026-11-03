@@ -1,0 +1,16 @@
+<frozen importlib._bootstrap>:533: DeprecationWarning: the load_module() method is deprecated and slated for removal in Python 3.15; use exec_module() instead
+<frozen importlib._bootstrap>:533: DeprecationWarning: the load_module() method is deprecated and slated for removal in Python 3.15; use exec_module() instead
+<frozen importlib._bootstrap>:533: DeprecationWarning: the load_module() method is deprecated and slated for removal in Python 3.15; use exec_module() instead
+----------------------------------------------------------------------
+Ran 108 tests in 0.658s
+
+OK
+published /tmp/tmpptio03b5/scene.json
+title='Copper night' mood=hushed gradient=['#070f20', '#19273d', '#333d53', '#56596b', '#817681'] weather=unknown
+wrote 1 frames to /tmp/tmpkkdx02n5/frames
+title='Copper night' mood=hushed gradient=['#070f20', '#19273d', '#333d53', '#56596b', '#817681'] weather=unknown
+wrote /tmp/tmpr1fxw87k/wall.png
+preview /tmp/tmpxt09b6cf/preview.png
+preview /tmp/tmpxt09b6cf/preview.png
+preview /tmp/tmpxt09b6cf/preview.png
+published /tmp/tmp06zzsf4f/scene.json

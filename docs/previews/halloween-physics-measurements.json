@@ -1,0 +1,53 @@
+{
+  "renderer": "Quadro M6000/PCIe/SSE2",
+  "canvas": [
+    3840,
+    1080
+  ],
+  "quality": "balanced",
+  "median_frame_ms": {
+    "day": 4.55,
+    "overcast": 4.82,
+    "rain": 5.05,
+    "snow": 5.08,
+    "night": 5.25,
+    "night-clear": 1.41,
+    "night-overcast": 5.28,
+    "dawn": 4.88,
+    "fallback-day": 4.71,
+    "golden-hour": 4.84,
+    "night-fallback": 5.29,
+    "halloween-day": 5.02,
+    "halloween-day-rain": 5.4,
+    "halloween-day-snow": 5.27,
+    "halloween": 5.42,
+    "halloween-rain": 5.85,
+    "halloween-snow": 5.9
+  },
+  "physics_checks_960x270": {
+    "terrain_shadow_motion": 0.6327335858585859,
+    "mist_motion": 1.1869633838383837,
+    "snow_advection": 9.072685185185184,
+    "wind_scintillation": 0.006721965020576132,
+    "star_twinkle": 0.027955246913580246,
+    "star_signal_clear_overcast": {
+      "0": 0.22485339506172838,
+      "1": 0.0013233024691358024
+    },
+    "rain_direction_error": {
+      "5": {
+        "with_wind": 3.518636821939907,
+        "against_wind": 10.502928009679371
+      },
+      "-5": {
+        "with_wind": 3.4736519459568465,
+        "against_wind": 10.463137729380923
+      }
+    },
+    "monitor_partition_pixel_delta": [
+      0.0,
+      0.0001440329218106996
+    ]
+  },
+  "timing_scope": "Isolated EGL renderer; excludes GNOME compositor overhead."
+}

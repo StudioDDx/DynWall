@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Dynamic wallpaper generator + animator.
 
 Renders a 3840x1080 spanned wallpaper: time-of-day gradient + weather-reactive
@@ -8,13 +8,15 @@ time and live weather (cached ~1 call/hour; deterministic fallback offline).
 Modes:
   dynwall              render one still, apply as wallpaper
   dynwall --animate N  render an N-frame animation loop to ~/.cache/dynwall/frames
-  dynwall --play       loop forever, cycling picture-uri through the frames
+  dynwall --refresh-scene  publish GPU state without network or image reloads
 
 Motion: twinkling stars, breathing glow, slowly drifting celestial disc,
 shimmering film grain. Frames are pre-rendered (cheap to cycle).
 """
 
 import hashlib
+import copy
+import argparse
 import json
 import math
 import os
@@ -27,12 +29,16 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
+# Resolve the installed symlink so sibling modules load from the checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from dynwall_weather import load_weather, weather_description, build_scene_document, write_scene
+
 W, H = 3840, 1080
-CACHE_DIR = Path.home() / ".cache" / "dynwall"
+CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "dynwall"
 SPEC_CACHE = CACHE_DIR / "spec.json"
 OUT_PNG = CACHE_DIR / "wall.png"
 FRAMES_DIR = CACHE_DIR / "frames"
-CONFIG_FILE = Path.home() / ".config" / "dynwall" / "config.json"
+CONFIG_FILE = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "dynwall" / "config.json"
 FRAME_SECONDS = 1.5  # dwell per frame when playing
 
 PROVIDERS = {
@@ -49,38 +55,61 @@ PROVIDERS = {
 }
 
 DEFAULTS = {
+    "enabled": True,
     "provider": "openai",
     "api_key": "",
     "model": "",
     "prompt": "",
+    "theme": "",
+    "theme_until": "",
+    "background": "auto",
     "allow_network": True,
     "allow_animation": True,
+    "seasonal_effects": True,
     "frames": 24,
     "frame_seconds": 1.5,
     "width": 3840,
     "height": 1080,
     "mesh_enabled": True,
+    "landscape_enabled": True,
+    "weather_fps": 30,
+    "weather_quality": "balanced",
 }
 
 # Embedded copy of default_prompt.txt (kept in sync; used if the file is missing).
 EMBEDDED_DEFAULT_PROMPT = """\
-You are the art director for a generative desktop wallpaper engine. Design today's composition. Be bold and artistic — vary your style hour to hour; do NOT default to safe navy gradients. Explore: duotone, synthwave, misty minimalism, aurora, brutalist contrast, pastel haze, bioluminescent night, golden-hour warmth.
-Return ONLY JSON:
+You are the creative director of a living Ubuntu desktop landscape. Make a distinctive, beautifully composed environment that feels alive and remains comfortable to work in.
+
+Explore luminous gradients, atmospheric perspective, rich but restrained color, soft light, deep shadows and subtle texture. Draw inspiration from the local time, month and observed weather. Give dawn a sense of emergence, daylight an open spaciousness, dusk a lingering warmth and night a quiet depth. Seasonal colors can inspire the palette without turning every scene into the same postcard.
+
+Use a coherent color story: a deep upper sky, a supporting middle tone, and a luminous horizon. Choose a distinct low panoramic scene: mist-separated hills, snow-covered alpine peaks, warm sand dunes, an open ocean horizon, or sky alone. Use landscape style hills, alpine, dunes, ocean, or none respectively. Leave most of the canvas to the sky. Place a restrained sun or moon away from monitor seams. Make cloud lighting, landscape color and glow feel like parts of the same scene. Keep stars delicate, grain subtle and vignettes gentle. Prefer open atmosphere to busy geometric patterns.
+
+Take creative risks with color and mood: copper and slate, apricot and teal, plum and rose, silver and indigo, or another carefully balanced combination. Vary the composition rather than simply changing its title. Surprise occasionally, leave room to breathe, and have fun. The engine supplies weather motion and seasonal events; choose the visual direction that makes them feel at home."""
+
+RENDERER_CONTRACT = """\
+Return only one valid JSON object, without Markdown or comments, matching this renderer contract:
 {
-  "title": "short poetic name",
-  "gradient": ["#hex", ...],           // 2-5 color stops, top to bottom
-  "gradient_positions": [0.0, ...],    // optional, same length, 0-1
-  "accent": "#hex",                    // used for mesh facets + details
-  "glow": {"color": "#hex", "x": 0-1, "y": 0-1, "size": 0.2-1.2, "intensity": 0-1, "pulse": 0-0.3} | null,
-  "celestial": {"type": "sun"|"moon", "x": 0-1, "y": 0-1, "size": 0.03-0.15, "drift": 0-0.05} | null,
-  "stars": 0-600,                      // starfield density; sensible only when dark
-  "mesh": {"style": "lowpoly"|"lines"|"none", "density": 10-28, "opacity": 0.02-0.16},
-  "grain": 0.0-0.06,
-  "vignette": 0.0-1.0,
+  "title": "short poetic scene name",
+  "gradient": ["#132d48", "#376079", "#8da8ae", "#d6b994", "#ecd1a6"],
+  "gradient_positions": [0.0, 0.35, 0.65, 0.85, 1.0],
+  "accent": "#d6aa68",
+  "glow": {"color": "#ffe0af", "x": 0.73, "y": 0.38, "size": 1.0, "intensity": 0.5, "pulse": 0.03},
+  "celestial": {"type": "sun", "x": 0.73, "y": 0.38, "size": 0.035, "drift": 0.005},
+  "landscape": {"style": "hills", "height": 0.2, "mist": 0.5},
+  "stars": 0,
+  "mesh": {"style": "none", "density": 18, "opacity": 0.03},
+  "grain": 0.009,
+  "vignette": 0.2,
   "mood": "one word"
 }
-The engine animates: stars twinkle, the glow pulses (pulse = amplitude), the celestial disc drifts (drift = travel distance across the loop), and the film grain shimmers. Choose motion params that suit the mood.
-Local time: {time}. Weather: {weather}. Canvas: 3840x1080 ultrawide spanning two monitors (vertical seam at x=0.5 — avoid placing key features exactly on it). Reflect the time of day and weather, but interpret freely."""
+The values above illustrate structure, not a palette to copy. Choose your own composition.
+Use 2-5 six-digit hex gradient colors and matching strictly increasing positions in [0,1].
+Glow may be null; x/y [0,1], size [0.2,1.2], intensity [0,1], pulse [0,0.3].
+Celestial may be null; type sun/moon, size [0.03,0.15], drift [0,0.05].
+Landscape style hills/alpine/dunes/ocean/none, height [0.1,0.3], mist [0,1]. Stars [0,600], only for darkness.
+Mesh style none/lines/lowpoly, density [10,28], opacity [0.02,0.16]. Grain [0,0.06], vignette [0,1].
+Prefer gentle grain (<=0.015), vignette (<=0.3), restrained celestial size and unhurried motion.
+The renderer controls observed cloud cover, rain, snow, solar lighting and decorative seasonal gusts independently. Do not invent weather measurements or unsupported objects."""
 
 
 def _bool(v, default):
@@ -88,16 +117,21 @@ def _bool(v, default):
 
 
 def _int(v, default, lo, hi):
+    if isinstance(v, bool):
+        return default
     try:
         return int(clamp(int(v), lo, hi))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
 def _float(v, default, lo, hi):
+    if isinstance(v, bool):
+        return default
     try:
-        return clamp(float(v), lo, hi)
-    except (TypeError, ValueError):
+        value = float(v)
+        return clamp(value, lo, hi) if math.isfinite(value) else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -121,17 +155,25 @@ def load_config() -> dict:
     cfg["api_key"] = raw["api_key"] if isinstance(raw.get("api_key"), str) else ""
     cfg["model"] = raw["model"] if isinstance(raw.get("model"), str) else ""
     cfg["prompt"] = raw["prompt"] if isinstance(raw.get("prompt"), str) else ""
-    for k in ("allow_network", "allow_animation", "mesh_enabled"):
+    for k in ("theme", "theme_until", "background"):
+        cfg[k] = raw[k] if isinstance(raw.get(k), str) else ""
+    for k in ("enabled", "allow_network", "allow_animation", "mesh_enabled", "seasonal_effects", "landscape_enabled"):
         cfg[k] = _bool(raw.get(k), DEFAULTS[k])
     cfg["frames"] = _int(raw.get("frames"), DEFAULTS["frames"], 1, 120)
     cfg["frame_seconds"] = _float(raw.get("frame_seconds"), DEFAULTS["frame_seconds"], 0.5, 10.0)
     cfg["width"] = _int(raw.get("width"), DEFAULTS["width"], 1, 15360)
     cfg["height"] = _int(raw.get("height"), DEFAULTS["height"], 1, 15360)
+    cfg["weather_fps"] = _int(raw.get("weather_fps"), 30, 15, 60)
+    cfg["weather_quality"] = raw.get("weather_quality", "balanced")
+    if cfg["weather_quality"] not in ("low", "balanced", "high"):
+        cfg["weather_quality"] = "balanced"
+
+    from dynwall_living import normalize_living_config
+    cfg.update(normalize_living_config({**raw, **cfg}))
 
     if cfg["provider"] in PROVIDERS:
         p = PROVIDERS[cfg["provider"]]
-        if not cfg["api_key"]:
-            cfg["api_key"] = os.environ.get(p["env_key"], "")
+        cfg["api_key"] = os.environ.get(p["env_key"], "").strip() or cfg["api_key"]
         if not cfg["model"]:
             cfg["model"] = p["default_model"]
     return cfg
@@ -160,9 +202,112 @@ def get_weather(allow_network: bool = True):
         return "unknown"
 
 
-def get_spec(weather: str, cfg: dict) -> dict:
+def theme_spec(now: datetime, cfg: dict, snapshot=None):
+    """Resolve an explicitly selected local preset, before its local-date cutoff."""
+    from datetime import date
+    if cfg.get("theme") != "halloween":
+        return None
+    until = cfg.get("theme_until", "")
+    if until != "":
+        try:
+            if now.date() >= date.fromisoformat(until):
+                return None
+        except (TypeError, ValueError):
+            return None
+    try:
+        current = snapshot.get("current", {}) if isinstance(snapshot, dict) else {}
+        observed_night = current.get("isNight")
+        night = observed_night if isinstance(observed_night, bool) else not 7 <= now.hour < 18
+        name = "halloween.json" if night else "halloween-day.json"
+        return json.loads((Path(__file__).resolve().parent / "themes" / name).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def background_spec(now: datetime, cfg: dict, weather: str):
+    """Explicit offline backgrounds take precedence over automatic/seasonal art."""
+    styles = {"ridges": "hills", "alpine": "alpine", "dunes": "dunes",
+              "ocean": "ocean", "sky": "none"}
+    style = styles.get(cfg.get("background"))
+    return fallback_spec(now, weather, style) if style else None
+
+
+def preview_weather_image(image, scenario):
+    """Explicitly illustrative still particles for the offline settings thumbnail."""
+    if scenario not in ("rain", "snow", "storm"):
+        return image
+    overlay = Image.new("RGBA", image.size)
+    draw = ImageDraw.Draw(overlay)
+    rng = random.Random(8291)
+    width, height = image.size
+    for _ in range(180 if scenario == "snow" else 260):
+        x, y = rng.randrange(width), rng.randrange(height)
+        if scenario == "snow":
+            radius = max(1, round(height / 360 * rng.uniform(.5, 1.7)))
+            draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=(233,241,247,170))
+        else:
+            length = max(3, round(height / 45))
+            draw.line((x,y,x+length//3,y+length),fill=(188,215,235,95),width=1)
+    if scenario == "storm":
+        draw.line([(width*.72,height*.12),(width*.69,height*.26),(width*.73,height*.25),(width*.68,height*.43)],fill=(235,229,255,225),width=max(1,height//180))
+    return Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
+
+
+def composite_selected_pack(image, cfg):
+    from dynwall_living import pack_directory, load_pack, composite_pack
+    if not cfg.get("landscape_pack") or cfg.get("landscape_enabled") is False:
+        return image
+    try:
+        return composite_pack(image, load_pack(pack_directory(cfg["landscape_pack"])), cfg.get("scene_customization", {}))
+    except (OSError, ValueError, TypeError, KeyError):
+        return image
+
+
+def customize_fallback_spec(spec, customization):
+    """Static counterpart of the native presentation controls; never mutate art."""
+    result = copy.deepcopy(spec)
+    c = customization if isinstance(customization, dict) else {}
+    horizon = _float(c.get("horizon"), .8, .5, .95)
+    scale = _float(c.get("terrain_scale"), 1, .5, 2)
+    terrain = result["landscape"] = dict(result["landscape"]) if isinstance(result.get("landscape"), dict) else {}
+    terrain["height"] = clamp((_float(terrain.get("height"), .2, .1, .3)+.8-horizon)*scale, .1, .3)
+    terrain["mist"] = clamp(_float(terrain.get("mist"), .5, 0, 1)+_float(c.get("mist"), .5, 0, 1)-.5, 0, 1)
+    warmth = _float(c.get("warmth"), 0, -1, 1)
+    darkness = _float(c.get("darkness"), 0, 0, 1)
+    def tint(color):
+        channels = hex_rgb(color)
+        return "#%02x%02x%02x" % tuple(round(clamp(value*(1-darkness*.65)+(warmth*18 if i==0 else -warmth*18 if i==2 else 0),0,255)) for i,value in enumerate(channels))
+    result["gradient"] = [tint(color) for color in result["gradient"]]
+    return result
+
+
+def build_pack_catalog():
+    from dynwall_living import list_packs
+    return {pack["id"]: {key: str(pack[key]) if key in ("root", "foreground") else pack[key]
+        for key in ("root", "foreground", "horizon")} for pack in list_packs()}
+
+
+def build_scene_library():
+    """Offline phase/material choices for clock-driven native schedules and previews."""
+    from datetime import datetime as phase_datetime
+    library = {}
+    for name, style in {"auto":"hills", "ridges":"hills", "alpine":"alpine", "dunes":"dunes", "ocean":"ocean", "sky":"none"}.items():
+        library[name] = {phase: fallback_spec(phase_datetime(2026, 6, 15, hour), "unknown", style)
+            for phase, hour in (("night", 0), ("sunrise", 6), ("day", 12), ("sunset", 18))}
+    return library
+
+
+def get_spec(weather: str, cfg: dict, snapshot=None) -> dict:
     now = datetime.now()
-    key = f"{now:%Y-%m-%d-%H}|{weather}|{cfg['provider']}|{cfg['model']}|{hashlib.sha256(cfg['prompt'].encode()).hexdigest()}"
+    background = background_spec(now, cfg, weather)
+    if background is not None:
+        return background
+    themed = theme_spec(now, cfg, snapshot)
+    if themed is not None:
+        return themed
+    template = cfg.get("prompt") or get_default_prompt()
+    signature = f"{template}\n{RENDERER_CONTRACT}\n{cfg['width']}x{cfg['height']}"
+    key = f"{now:%Y-%m-%d-%H}|{weather}|{cfg['provider']}|{cfg['model']}|{hashlib.sha256(signature.encode()).hexdigest()}"
 
     if SPEC_CACHE.exists():
         try:
@@ -178,17 +323,28 @@ def get_spec(weather: str, cfg: dict) -> dict:
     return spec
 
 
+def build_art_prompt(now: datetime, weather: str, cfg: dict) -> str:
+    template = cfg.get("prompt") or get_default_prompt()
+    context = {"time": f"{now:%Y-%m-%d %A %H:%M}", "weather": weather,
+               "width": str(cfg["width"]), "height": str(cfg["height"])}
+    for name, value in context.items():
+        template = template.replace("{" + name + "}", value)
+    return (f"{template}\n\n{RENDERER_CONTRACT}\n\n"
+            f"Local time: {context['time']}. Local month: {now:%B}.\n"
+            f"Observed weather: {weather}. Canvas: {cfg['width']}x{cfg['height']}.\n"
+            "This canvas can span monitors: avoid putting the focal disc exactly at x=0.5.")
+
+
 def llm_spec(now: datetime, weather: str, cfg: dict):
     if not cfg.get("allow_network", True):
         return None
     provider = cfg.get("provider", "openai")
     if provider == "none" or provider not in PROVIDERS:
         return None
-    key = cfg.get("api_key") or os.environ.get(PROVIDERS[provider]["env_key"])
+    key = os.environ.get(PROVIDERS[provider]["env_key"], "").strip() or cfg.get("api_key")
     if not key:
         return None
-    template = cfg.get("prompt") or get_default_prompt()
-    prompt = template.replace("{time}", f"{now:%A %H:%M}").replace("{weather}", weather)
+    prompt = build_art_prompt(now, weather, cfg)
     headers = {"Authorization": f"Bearer {key}"}
     if provider == "openrouter":
         headers["HTTP-Referer"] = "dynwall"
@@ -201,7 +357,7 @@ def llm_spec(now: datetime, weather: str, cfg: dict):
                 "model": cfg.get("model") or PROVIDERS[provider]["default_model"],
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
-                "max_completion_tokens": 400,
+                "max_completion_tokens": 900,
             },
             timeout=30,
         )
@@ -215,50 +371,83 @@ def llm_spec(now: datetime, weather: str, cfg: dict):
         return None
 
 
-def fallback_spec(now: datetime, weather: str):
-    """Deterministic palette from approximate sun elevation."""
-    h = now.hour + now.minute / 60
-    # crude daylight window 6:00-20:00
-    elev = math.sin(math.pi * (h - 6) / 14) if 6 <= h <= 20 else -0.3
-    elev = max(-0.3, min(1.0, elev))
-
-    def lerp(a, b, t):
-        return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
-
-    night = [(10, 12, 28), (18, 22, 48), (28, 26, 60)]
-    dusk = [(38, 24, 54), (120, 58, 84), (224, 122, 95)]
-    day = [(64, 116, 176), (126, 172, 208), (196, 216, 228)]
-
-    t = (elev + 0.3) / 1.3
-    if t < 0.5:
-        stops = [lerp(night[i], dusk[i], t * 2) for i in range(3)]
-    else:
-        stops = [lerp(dusk[i], day[i], (t - 0.5) * 2) for i in range(3)]
-
-    gray = "rain" in weather or "🌧" in weather or "☁" in weather or "🌫" in weather
-    if gray:
-        stops = [lerp(c, (sum(c) // 3,) * 3, 0.35) for c in stops]
-
-    hx = lambda c: "#%02x%02x%02x" % c
+def fallback_spec(now: datetime, weather: str, style="hills"):
+    """A smooth local-clock composition; artistic, not a solar ephemeris."""
+    hour = now.hour + now.minute / 60 + now.second / 3600
+    night = ["#070f20", "#14243c", "#2a3852", "#4c546b", "#777284"]
+    dawn = ["#253650", "#686078", "#ae8591", "#dfb49e", "#f0dbb7"]
+    day = ["#234961", "#4d8198", "#87aeb6", "#bacdc7", "#e7ddc4"]
+    dusk = ["#293655", "#644f70", "#ac7787", "#dfa68a", "#f0d5b2"]
+    if style == "alpine":
+        night = ["#060e1a", "#142337", "#2a3a50", "#4f6174", "#8c9ea6"]
+        day = ["#204b65", "#4d8097", "#83afbd", "#bdcfd0", "#e8e3d1"]
+        dawn = ["#343e62", "#7e7799", "#bf9da6", "#e7c7b6", "#f4e3ce"]
+        dusk = ["#283750", "#6e6781", "#b3909a", "#ddb9a2", "#f1dbbd"]
+    elif style == "dunes":
+        night = ["#120e1b", "#302438", "#534054", "#806170", "#ad8b83"]
+        day = ["#386274", "#72939a", "#adbbaf", "#d8c9a9", "#f0d6a7"]
+        dawn = ["#443653", "#89627b", "#c38f91", "#e5b69e", "#f7dbb5"]
+        dusk = ["#342c49", "#71516c", "#b4797c", "#db9e84", "#edc49d"]
+    elif style == "ocean":
+        night = ["#050f1b", "#102b3a", "#224852", "#42666c", "#74918d"]
+        day = ["#1e506b", "#40839a", "#7fb2bc", "#bbd4cf", "#e5e2c9"]
+        dawn = ["#303e59", "#726f88", "#b49aab", "#ddc4b9", "#f4e2cc"]
+        dusk = ["#28364e", "#605e79", "#9c8293", "#cfa99d", "#edcbb0"]
+    anchors = [(0, night), (5, night), (7, dawn), (11, day),
+               (15, day), (18, dusk), (20.5, night), (24, night)]
+    for (start, a), (end, b) in zip(anchors, anchors[1:]):
+        if start <= hour <= end:
+            fraction = (hour - start) / (end - start)
+            fraction = fraction * fraction * (3 - 2 * fraction)
+            stops = [tuple(round(x + (y-x)*fraction) for x,y in zip(hex_rgb(c), hex_rgb(d)))
+                     for c,d in zip(a,b)]
+            break
+    autumn = style == "hills" and now.month in (9, 10, 11)
+    # A little seasonal color near the horizon; keep the upper sky open and quiet.
+    if autumn:
+        stops = [tuple(round(c*(1-i*.025) + warm*i*.025) for c,warm in zip(color, (215,150,102)))
+                 for i,color in enumerate(stops)]
+    description = weather.lower()
+    wet = any(word in description for word in ("rain", "cloud", "overcast", "fog", "snow"))
+    if wet:
+        stops = [tuple(round(c*.78 + sum(color)/3*.22) for c in color) for color in stops]
+    dark = hour < 6 or hour >= 20
+    twilight = 6 <= hour <= 8 or 16 <= hour < 20
     return {
-        "title": "fallback",
-        "gradient": [hx(c) for c in stops],
-        "accent": "#e0b36a" if t >= 0.5 else "#7a86c8",
-        "glow": None,
-        "celestial": None,
-        "stars": 200 if t < 0.35 else 0,
-        "mesh": {"style": "lowpoly", "density": 18, "opacity": 0.08},
-        "grain": 0.025,
-        "vignette": 0.7,
-        "mood": "fallback",
+        "title": {"alpine": "Alpine Stillness", "dunes": "Amber Dunes", "ocean": "Tidal Light",
+                  "none": "Open Sky"}.get(style, ("Copper" if autumn else "Luminous") + (" night" if dark else " horizon")),
+        "gradient": ["#%02x%02x%02x" % color for color in stops],
+        "gradient_positions": [0, .32, .64, .84, 1],
+        "accent": "#d9a566" if autumn else "#b7c9ba",
+        "glow": {"color": "#b0c4e4" if dark else "#ffe0b4",
+                 "x": .73, "y": .3 if dark else .48 if twilight else .32,
+                 "size": 1.1, "intensity": .22 if dark else .5, "pulse": .025},
+        "celestial": {"type": "moon" if dark else "sun", "x": .73,
+                      "y": .3 if dark else .48 if twilight else .32,
+                      "size": .032, "drift": .004},
+        "landscape": {"style": style, "height": .28 if style == "alpine" else .2,
+                      "mist": .65 if wet else .45},
+        "stars": 420 if dark else 0,
+        "mesh": {"style": "none", "density": 18, "opacity": .025},
+        "grain": .009, "vignette": .22, "mood": "hushed" if dark else "luminous",
     }
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def hex_rgb(s):
-    s = str(s).lstrip("#")[:6]
-    return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))
+def hex_rgb(s, fallback=(136, 136, 136)):
+    """Parse '#rrggbb' (with/without '#') to an (r, g, b) tuple.
+
+    LLM specs are untrusted: malformed or short strings fall back to gray
+    instead of crashing the render.
+    """
+    try:
+        s = str(s).lstrip("#")[:6]
+        if len(s) < 6:
+            raise ValueError(f"short color {s!r}")
+        return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))
+    except (TypeError, ValueError):
+        return fallback
 
 
 def num(v, default):
@@ -277,7 +466,7 @@ def clamp(v, lo, hi):
 
 # ── layer building (static parts, computed once) ────────────────────────────
 
-def build_scene(spec, mesh_enabled: bool = True):
+def build_scene(spec, mesh_enabled: bool = True, landscape_enabled: bool = True):
     """Returns a dict of pre-built layers + animation params."""
     stops = [hex_rgb(c) for c in spec["gradient"][:5]]
     if len(stops) < 2:
@@ -302,12 +491,13 @@ def build_scene(spec, mesh_enabled: bool = True):
     strip = Image.new("RGB", (1, H))
     spx = strip.load()
     for y in range(H):
-        t = y / (H - 1)
+        t = y / max(1, H - 1)
         i = 0
         while i < len(positions) - 2 and t > positions[i + 1]:
             i += 1
         p0, p1 = positions[i], positions[i + 1]
         f = 0.0 if p1 <= p0 else clamp((t - p0) / (p1 - p0), 0.0, 1.0)
+        f = f * f * (3 - 2 * f)
         spx[0, y] = tuple(int(stops[i][k] + (stops[i + 1][k] - stops[i][k]) * f) for k in range(3))
     base = strip.resize((W, H))
 
@@ -417,17 +607,80 @@ def build_scene(spec, mesh_enabled: bool = True):
     # vignette (static)
     vig = None
     if vig_strength > 0:
-        vig = Image.new("L", (W, H), 0)
-        vd = ImageDraw.Draw(vig)
-        vd.ellipse([-W * 0.15, -H * 0.35, W * 1.15, H * 1.35], fill=int(255 * vig_strength))
-        vig = vig.filter(ImageFilter.GaussianBlur(220))
+        # Same gentle attenuation as GLSL: strength darkens the edges, while
+        # the center remains fully lit. Build a bounded mask, then upscale.
+        vw, vh = min(W, 512), min(H, 256)
+        pixels = bytearray(
+            round(255 * (1-vig_strength*min(1, (((x+.5)/vw-.5)**2 + ((y+.5)/vh-.5)**2)*1.3)*.6))
+            for y in range(vh) for x in range(vw)
+        )
+        vig = Image.frombytes("L", (vw, vh), bytes(pixels)).resize((W, H), Image.Resampling.BILINEAR)
 
     return {
         "base": base, "glow_mask": glow_mask, "glow_c": glow_c,
         "glow_pulse": glow_pulse, "cel_tile": cel_tile, "cel_cfg": cel_cfg,
         "stars": stars, "mesh": mesh if mesh_style != "none" else None,
         "grain": grain, "vig": vig,
+        "landscape": build_landscape(spec, stops) if landscape_enabled else None,
     }
+
+
+def build_landscape(spec, stops):
+    """Static scene counterpart to the GPU silhouettes and materials."""
+    cfg = spec.get("landscape") if isinstance(spec.get("landscape"), dict) else {}
+    if cfg.get("style") == "none":
+        return None
+    height = clamp(num(cfg.get("height"), .2), .1, .3)
+    mist = clamp(num(cfg.get("mist"), .5), 0, 1)
+    daylight = 0 if num(spec.get("stars"), 0) > 0 else 1
+    shadow = [stops[0][i]*.22 + stops[1][i]*.15 for i in range(3)]
+    horizon = [v*(.38 + .62*daylight) for v in stops[-1]]
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    style = cfg.get("style", "hills")
+    if style == "ocean":
+        waterline = 1-height
+        light_x = num(spec.get("celestial", {}).get("x"), .73)*W
+        for py in range(round(waterline*H), H):
+            depth = (py/H-waterline)/height
+            reflected = hex_rgb(spec.get("glow", {}).get("color", "#ffe0b4"))
+            color = tuple(round(horizon[i]*(.5-.23*depth)+shadow[i]*(.5+.23*depth)) for i in range(3))
+            draw.line((0, py, W, py), fill=(*color, 255))
+            shimmer = max(0, math.sin(py*1.7)+math.sin(py*.47))*.11
+            span = (.012+depth*.09)*W
+            if shimmer > .04:
+                cx = light_x + math.sin(py*.64)*span*.35
+                glint = tuple(round(color[i]*(1-shimmer)+reflected[i]*shimmer) for i in range(3))
+                draw.line((cx-span, py, cx+span, py), fill=(*glint, 255))
+        return layer
+    for depth in range(3):
+        points = []
+        step = max(1, W // 1200)
+        for px in range(0, W + step, step):
+            x = px / max(1, H)
+            ridge = (1-height + depth*.055 +
+                     (math.sin(x*2+depth*2)*.045 + math.sin(x*5.3+depth*3)*.018 +
+                      math.sin(x*11+depth)*.006)*height/.2)
+            if style == "alpine":
+                peaks = abs(math.sin(x*1.9+depth*2.1))*.080+abs(math.sin(x*4.3+depth*.7))*.025
+                ridge = 1-height+depth*.065+(peaks-.054+math.sin(x*19+depth)*.004)*height/.2
+            elif style == "dunes":
+                ridge = 1-height+depth*.055+(math.sin(x*1.7+depth*1.8)*.035+math.sin(x*3.1+depth)*.015)*height/.2
+            points.append((px, round(ridge*H)))
+        fog = (.6-depth*.23)*(.65+mist*.7)
+        color = tuple(round(shadow[i]*(1-fog) + horizon[i]*fog) for i in range(3))
+        draw.polygon([(0, H), *points, (W, H)], fill=(*color, 255))
+        if style == "alpine":
+            snowline = (1-height+.025+depth*.065)*H
+            snow = tuple(round((stops[-1][i]*.68+stops[2][i]*.32)*(.45+.55*daylight)) for i in range(3))
+            for px, py in points:
+                bottom = round(snowline+math.sin(px/max(1,H)*31)*H*.007)
+                if py < bottom:
+                    draw.line((px, py, px, bottom), fill=(*snow, 255), width=step)
+        elif style == "dunes":
+            crest = tuple(round(color[i]*.75+stops[-1][i]*.25) for i in range(3))
+            draw.line(points, fill=(*crest, 255), width=max(1, H//500))
+    return layer
 
 
 # ── frame composition ────────────────────────────────────────────────────────
@@ -468,6 +721,9 @@ def compose(scene, t: float, frame_seed: int) -> Image.Image:
     if scene["mesh"] is not None:
         img = Image.alpha_composite(img, scene["mesh"])
 
+    if scene.get("landscape") is not None:
+        img = Image.alpha_composite(img, scene["landscape"])
+
     img = img.convert("RGB")
 
     # shimmering film grain (per-frame seed)
@@ -494,17 +750,18 @@ def set_wallpaper(path: Path):
     subprocess.run(["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"], check=False)
 
 
-def render_still(spec, mesh_enabled: bool = True):
-    scene = build_scene(spec, mesh_enabled)
+def render_still(spec, mesh_enabled: bool = True, landscape_enabled: bool = True):
+    scene = build_scene(spec, mesh_enabled, landscape_enabled)
     img = compose(scene, 0.0, frame_seed=0)
+    img = composite_selected_pack(img, spec.get("_living", {}))
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     img.save(OUT_PNG, "PNG")
     set_wallpaper(OUT_PNG)
     print(f"wrote {OUT_PNG}")
 
 
-def render_frames(spec, n: int, mesh_enabled: bool = True):
-    scene = build_scene(spec, mesh_enabled)
+def render_frames(spec, n: int, mesh_enabled: bool = True, landscape_enabled: bool = True):
+    scene = build_scene(spec, mesh_enabled, landscape_enabled)
     # Render into a staging dir, then atomically swap so --play never sees
     # half-written or missing frames.
     staging = FRAMES_DIR.with_name("frames.new")
@@ -513,7 +770,7 @@ def render_frames(spec, n: int, mesh_enabled: bool = True):
             old.unlink()
     staging.mkdir(parents=True, exist_ok=True)
     for i in range(n):
-        compose(scene, i / n, frame_seed=i).save(staging / f"f{i:03d}.png", "PNG")
+        composite_selected_pack(compose(scene, i / n, frame_seed=i), spec.get("_living", {})).save(staging / f"f{i:03d}.png", "PNG")
     old_dir = FRAMES_DIR.with_name("frames.old")
     if FRAMES_DIR.exists():
         FRAMES_DIR.rename(old_dir)
@@ -526,46 +783,108 @@ def render_frames(spec, n: int, mesh_enabled: bool = True):
 
 
 def play(frame_seconds: float = FRAME_SECONDS):
-    frames = sorted(FRAMES_DIR.glob("f*.png"))
-    if len(frames) < 2:
-        print("no frames; run: dynwall --animate 30", file=sys.stderr)
-        sys.exit(1)
-    subprocess.run(["/usr/bin/gsettings", "set", "org.gnome.desktop.background",
-                    "picture-options", "spanned"], check=False)
-    i = 0
-    while True:
-        uri = f"file://{frames[i]}"
-        for key in ("picture-uri", "picture-uri-dark"):
-            r = subprocess.run(["/usr/bin/gsettings", "set", "org.gnome.desktop.background", key, uri],
-                               capture_output=True, text=True)
-            if r.returncode != 0:
-                print(f"gsettings failed: {r.stderr.strip()}", file=sys.stderr, flush=True)
-        print(f"frame {i}: {uri}", flush=True)
-        i = (i + 1) % len(frames)
-        time.sleep(frame_seconds)
+    """Legacy playback is intentionally disabled; kept as a migration guard."""
+    raise RuntimeError("Use gnome-extensions enable dynwall@rucaradio; picture-uri playback is disabled")
+
+
+def main(argv=None):
+    global W, H, FRAME_SECONDS
+    parser = argparse.ArgumentParser(description="Time-aware sky with native GPU weather")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--preview-output", type=Path, metavar="PATH", help="Render the current offline preview to a file without changing wallpaper")
+    modes.add_argument("--refresh-scene", action="store_true", help="Publish GPU state without network or changing wallpaper")
+    modes.add_argument("--animate", nargs="?", const=None, default=argparse.SUPPRESS, type=int, metavar="N", help="Export legacy PNG frames (not desktop playback)")
+    modes.add_argument("--play", action="store_true", help="Removed: use the native GNOME extension")
+    args = parser.parse_args(argv)
+    if args.play:
+        print("Legacy picture-uri playback is disabled to avoid desktop stalls. Use: "
+              "gnome-extensions enable dynwall@rucaradio", file=sys.stderr)
+        return 2
+    cfg = load_config()
+    if not cfg["enabled"] and not args.preview_output:
+        print("Dynwall is disabled in settings")
+        return 0
+    original_cfg = copy.deepcopy(cfg)
+    W, H = cfg["width"], cfg["height"]
+    FRAME_SECONDS = cfg["frame_seconds"]
+    from dynwall_living import resolve_selection
+    selected = resolve_selection(cfg, time.time())
+    if isinstance(selected, dict):
+        cfg.update({key: value for key, value in selected.items() if key in ("background", "landscape_pack", "scene_customization")})
+    snapshot = load_weather()
+    weather = weather_description(snapshot) if snapshot else "unknown"
+    if args.preview_output:
+        # Settings thumbnail rendering is entirely local and never changes scene or observations.
+        request = None
+        try:
+            request = json.loads((CACHE_DIR / "preview.json").read_text())
+        except (OSError, ValueError):
+            pass
+        clock = datetime.now()
+        from dynwall_living import preview_scene, normalize_living_config
+        presentation = preview_scene({}, request, time.time())
+        if presentation['preview']:
+            selection = request.get("selection")
+            if isinstance(selection, dict):
+                cfg = normalize_living_config({**cfg, **{key: value for key, value in selection.items()
+                    if key in ("background", "landscape_pack", "scene_customization")}})
+            clock = datetime.fromtimestamp(presentation['previewClock'] / 1000)
+            weather = presentation['previewScenario']
+        preview_scale = min(1, 1280 / W, 720 / H)
+        W, H = max(1, round(W * preview_scale)), max(1, round(H * preview_scale))
+        spec = background_spec(clock, cfg, weather) or fallback_spec(clock, weather)
+        spec = customize_fallback_spec(spec, cfg.get("scene_customization"))
+        image = compose(build_scene(spec, cfg["mesh_enabled"], cfg["landscape_enabled"]), 0, 0)
+        image = composite_selected_pack(image, cfg)
+        image = preview_weather_image(image, weather)
+        args.preview_output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        image.save(args.preview_output)
+        print(f"preview {args.preview_output}")
+        return 0
+    themed = background_spec(datetime.now(), cfg, weather)
+    if themed is None:
+        themed = theme_spec(datetime.now(), cfg, snapshot)
+    if themed is not None:
+        spec = themed
+    elif args.refresh_scene:
+        # Settings changes never spend API tokens or touch the desktop image.
+        try:
+            spec = json.loads(SPEC_CACHE.read_text())["spec"]
+            if not isinstance(spec, dict) or not isinstance(spec.get("gradient"), list) or len(spec["gradient"]) < 2:
+                raise ValueError("invalid cached sky")
+        except (OSError, ValueError, KeyError, TypeError):
+            spec = fallback_spec(datetime.now(), weather)
+    else:
+        spec = get_spec(weather, cfg, snapshot)
+    document = build_scene_document(spec, snapshot, cfg)
+    document["sceneLibrary"] = build_scene_library()
+    document["packs"] = build_pack_catalog()
+    automatic = theme_spec(datetime.now(), original_cfg, snapshot)
+    if automatic is None:
+        try:
+            automatic = json.loads(SPEC_CACHE.read_text())["spec"]
+            if not isinstance(automatic, dict) or not isinstance(automatic.get("gradient"), list):
+                raise ValueError("invalid cached automatic art")
+        except (OSError, ValueError, KeyError, TypeError):
+            automatic = fallback_spec(datetime.now(), weather)
+    document["automaticSpec"] = automatic
+    write_scene(CACHE_DIR / "scene.json", document)
+    if args.refresh_scene:
+        print(f"published {CACHE_DIR / 'scene.json'}")
+        return 0
+    spec = customize_fallback_spec(spec, cfg.get("scene_customization"))
+    spec["_living"] = cfg
+    print(f"title={spec.get('title')!r} mood={spec.get('mood')} gradient={spec['gradient']} weather={weather}")
+    if hasattr(args, "animate"):
+        if not cfg["allow_animation"]:
+            print("animation disabled in config (allow_animation=false)", file=sys.stderr)
+            return 1
+        n = int(clamp(cfg["frames"] if args.animate is None else args.animate, 1, 120))
+        render_frames(spec, n, cfg["mesh_enabled"], cfg["landscape_enabled"])
+    else:
+        render_still(spec, cfg["mesh_enabled"], cfg["landscape_enabled"])
+    return 0
 
 
 if __name__ == "__main__":
-    cfg = load_config()
-    W, H = cfg["width"], cfg["height"]
-    FRAME_SECONDS = cfg["frame_seconds"]
-
-    args = sys.argv[1:]
-    if args and args[0] == "--play":
-        play(FRAME_SECONDS)
-    weather = get_weather(cfg["allow_network"])
-    spec = get_spec(weather, cfg)
-    print(f"title={spec.get('title')!r} mood={spec.get('mood')} gradient={spec['gradient']} weather={weather}")
-    if args and args[0] == "--animate":
-        if not cfg["allow_animation"]:
-            print("animation disabled in config (allow_animation=false)", file=sys.stderr)
-            sys.exit(1)
-        try:
-            n = int(args[1]) if len(args) > 1 else cfg["frames"]
-        except ValueError:
-            print(f"usage: dynwall --animate [N]  (N must be an integer, got {args[1]!r})", file=sys.stderr)
-            sys.exit(2)
-        n = int(clamp(n, 1, 120))
-        render_frames(spec, n, cfg["mesh_enabled"])
-    else:
-        render_still(spec, cfg["mesh_enabled"])
+    sys.exit(main())

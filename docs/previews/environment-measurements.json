@@ -1,0 +1,115 @@
+{
+  "renderer": "Quadro M6000/PCIe/SSE2",
+  "quality": "balanced",
+  "width": 3840,
+  "height": 1080,
+  "frame_timing_samples_ms": {
+    "day": [
+      4.64,
+      4.67,
+      4.7
+    ],
+    "overcast": [
+      4.91,
+      4.32,
+      4.93
+    ],
+    "rain": [
+      4.53,
+      3.94,
+      5.37
+    ],
+    "snow": [
+      5.61,
+      6.59,
+      6.52
+    ],
+    "night": [
+      5.25,
+      5.54,
+      5.25
+    ],
+    "night-clear": [
+      1.11,
+      1.56,
+      1.42
+    ],
+    "night-overcast": [
+      5.27,
+      6.57,
+      6.59
+    ],
+    "dawn": [
+      5.27,
+      5.82,
+      6.09
+    ],
+    "fallback-day": [
+      5.75,
+      5.56,
+      6.58
+    ],
+    "golden-hour": [
+      5.08,
+      5.97,
+      5.32
+    ],
+    "night-fallback": [
+      5.66,
+      6.63,
+      6.61
+    ]
+  },
+  "median_frame_ms": {
+    "day": 4.67,
+    "overcast": 4.91,
+    "rain": 4.53,
+    "snow": 6.52,
+    "night": 5.25,
+    "night-clear": 1.42,
+    "night-overcast": 6.57,
+    "dawn": 5.82,
+    "fallback-day": 5.75,
+    "golden-hour": 5.32,
+    "night-fallback": 6.61
+  },
+  "motion_pixel_delta": 1.9140137120627572,
+  "star_signal_clear_overcast": {
+    "0": 0.17733458719135803,
+    "1": 0.0010009162808641975
+  },
+  "rain_direction_error": {
+    "5": {
+      "with_wind": 3.4967637124420246,
+      "against_wind": 10.4561383343416
+    },
+    "-5": {
+      "with_wind": 3.4718368118572296,
+      "against_wind": 10.397768451300665
+    }
+  },
+  "monitor_partition_pixel_delta": [
+    0.0,
+    0.00013149434156378603
+  ],
+  "leaf_signal": 1.17205753279321,
+  "leaf_direction_error": {
+    "1": {
+      "with_wind": 1.1546626320798459,
+      "against_wind": 5.543923717025794
+    },
+    "-1": {
+      "with_wind": 1.0456055540642768,
+      "against_wind": 4.954164816125332
+    }
+  },
+  "isolated_gust_frame_samples_ms": [
+    0.94,
+    1.62,
+    0.94
+  ],
+  "isolated_gust_median_frame_ms": 0.94,
+  "production_shader": "extension/weather.glsl",
+  "landscape_signal": 120.92107392403979,
+  "production_shader_sha256": "d5cbae65044ce3cd37180dc57edbf45158b8ebfe8ff78bc48aea9503dd02119c"
+}

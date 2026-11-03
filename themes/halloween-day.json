@@ -1,0 +1,14 @@
+{
+  "title": "Hollow Harvest",
+  "gradient": ["#423e59", "#716478", "#aa8990", "#cda383", "#e6bb80"],
+  "gradient_positions": [0.0, 0.34, 0.65, 0.86, 1.0],
+  "accent": "#e99b43",
+  "glow": {"color": "#ffca83", "x": 0.76, "y": 0.34, "size": 0.85, "intensity": 0.42, "pulse": 0.015},
+  "celestial": {"type": "sun", "x": 0.76, "y": 0.34, "size": 0.046, "drift": 0.002},
+  "landscape": {"style": "hills", "height": 0.26, "mist": 0.82},
+  "stars": 0,
+  "mesh": {"style": "none", "density": 18, "opacity": 0.02},
+  "grain": 0.01,
+  "vignette": 0.22,
+  "mood": "bewitched"
+}

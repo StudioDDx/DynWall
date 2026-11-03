@@ -1,0 +1,398 @@
+{
+  "renderer": "Quadro M6000/PCIe/SSE2",
+  "quality": "balanced",
+  "width": 1280,
+  "height": 720,
+  "frame_timing_samples_ms": {
+    "day": [
+      1.09,
+      0.87,
+      2.21
+    ],
+    "overcast": [
+      2.09,
+      0.89,
+      1.83
+    ],
+    "rain": [
+      1.48,
+      1.14,
+      1.86
+    ],
+    "snow": [
+      1.82,
+      1.15,
+      2.13
+    ],
+    "night": [
+      1.35,
+      1.91,
+      1.4
+    ],
+    "night-clear": [
+      0.5,
+      0.8,
+      0.26
+    ],
+    "night-overcast": [
+      1.98,
+      2.21,
+      2.11
+    ],
+    "dawn": [
+      1.84,
+      1.85,
+      1.84
+    ],
+    "fallback-day": [
+      2.05,
+      2.07,
+      2.12
+    ],
+    "golden-hour": [
+      1.6,
+      1.11,
+      1.82
+    ],
+    "night-fallback": [
+      1.66,
+      0.99,
+      2.11
+    ],
+    "ridges-day": [
+      1.06,
+      1.81,
+      1.31
+    ],
+    "ridges-dusk": [
+      2.03,
+      1.11,
+      1.82
+    ],
+    "ridges-night": [
+      1.93,
+      1.18,
+      2.17
+    ],
+    "alpine-day": [
+      1.02,
+      1.46,
+      1.45
+    ],
+    "alpine-dusk": [
+      1.45,
+      1.45,
+      1.43
+    ],
+    "alpine-night": [
+      1.55,
+      1.36,
+      1.54
+    ],
+    "dunes-day": [
+      0.9,
+      1.29,
+      1.09
+    ],
+    "dunes-dusk": [
+      1.12,
+      1.68,
+      1.36
+    ],
+    "dunes-night": [
+      1.03,
+      1.97,
+      1.18
+    ],
+    "ocean-day": [
+      1.67,
+      0.93,
+      1.15
+    ],
+    "ocean-dusk": [
+      1.51,
+      0.95,
+      0.72
+    ],
+    "ocean-night": [
+      0.82,
+      1.8,
+      1.02
+    ],
+    "sky-day": [
+      0.93,
+      0.92,
+      0.92
+    ],
+    "sky-dusk": [
+      1.13,
+      0.7,
+      0.89
+    ],
+    "sky-night": [
+      1.22,
+      0.98,
+      1.01
+    ],
+    "halloween-day": [
+      1.33,
+      1.09,
+      1.13
+    ],
+    "halloween-day-rain": [
+      1.53,
+      1.37,
+      1.94
+    ],
+    "halloween-day-snow": [
+      2.19,
+      0.99,
+      2.13
+    ],
+    "halloween": [
+      1.98,
+      1.2,
+      1.69
+    ],
+    "halloween-rain": [
+      1.81,
+      1.69,
+      2.0
+    ],
+    "halloween-snow": [
+      1.48,
+      1.95,
+      1.3
+    ],
+    "living-day": [
+      0.95,
+      1.77,
+      1.25
+    ],
+    "living-night": [
+      0.96,
+      2.27,
+      0.98
+    ],
+    "living-wet": [
+      1.87,
+      1.34,
+      1.85
+    ],
+    "living-accumulated-snow": [
+      1.16,
+      2.07,
+      0.93
+    ],
+    "living-winter": [
+      1.53,
+      1.3,
+      1.92
+    ],
+    "living-spring": [
+      0.97,
+      1.87,
+      1.61
+    ],
+    "living-summer": [
+      1.37,
+      1.88,
+      1.25
+    ],
+    "living-autumn": [
+      1.51,
+      1.12,
+      1.17
+    ],
+    "living-customization": [
+      0.96,
+      2.07,
+      1.18
+    ],
+    "living-shooting-star": [
+      1.39,
+      1.71,
+      1.39
+    ],
+    "living-lightning": [
+      1.22,
+      1.08,
+      1.79
+    ],
+    "living-fireflies": [
+      1.53,
+      2.44,
+      1.15
+    ],
+    "living-pollen": [
+      1.67,
+      1.19,
+      1.92
+    ],
+    "living-birds": [
+      0.91,
+      2.04,
+      0.94
+    ],
+    "living-ocean": [
+      1.25,
+      1.1,
+      0.88
+    ],
+    "living-ocean-wet": [
+      1.17,
+      0.75,
+      1.42
+    ],
+    "preview-sunrise": [
+      1.37,
+      1.33,
+      1.92
+    ],
+    "preview-day": [
+      1.37,
+      1.91,
+      1.33
+    ],
+    "preview-night": [
+      1.49,
+      1.25,
+      2.27
+    ],
+    "preview-rain": [
+      2.12,
+      1.34,
+      2.33
+    ],
+    "preview-snow": [
+      1.9,
+      1.8,
+      2.2
+    ],
+    "preview-storm": [
+      1.54,
+      1.77,
+      1.83
+    ]
+  },
+  "median_frame_ms": {
+    "day": 1.09,
+    "overcast": 1.83,
+    "rain": 1.48,
+    "snow": 1.82,
+    "night": 1.4,
+    "night-clear": 0.5,
+    "night-overcast": 2.11,
+    "dawn": 1.84,
+    "fallback-day": 2.07,
+    "golden-hour": 1.6,
+    "night-fallback": 1.66,
+    "ridges-day": 1.31,
+    "ridges-dusk": 1.82,
+    "ridges-night": 1.93,
+    "alpine-day": 1.45,
+    "alpine-dusk": 1.45,
+    "alpine-night": 1.54,
+    "dunes-day": 1.09,
+    "dunes-dusk": 1.36,
+    "dunes-night": 1.18,
+    "ocean-day": 1.15,
+    "ocean-dusk": 0.95,
+    "ocean-night": 1.02,
+    "sky-day": 0.92,
+    "sky-dusk": 0.89,
+    "sky-night": 1.01,
+    "halloween-day": 1.13,
+    "halloween-day-rain": 1.53,
+    "halloween-day-snow": 2.13,
+    "halloween": 1.69,
+    "halloween-rain": 1.81,
+    "halloween-snow": 1.48,
+    "living-day": 1.25,
+    "living-night": 0.98,
+    "living-wet": 1.85,
+    "living-accumulated-snow": 1.16,
+    "living-winter": 1.53,
+    "living-spring": 1.61,
+    "living-summer": 1.37,
+    "living-autumn": 1.17,
+    "living-customization": 1.18,
+    "living-shooting-star": 1.39,
+    "living-lightning": 1.22,
+    "living-fireflies": 1.53,
+    "living-pollen": 1.67,
+    "living-birds": 0.94,
+    "living-ocean": 1.1,
+    "living-ocean-wet": 1.17,
+    "preview-sunrise": 1.37,
+    "preview-day": 1.37,
+    "preview-night": 1.49,
+    "preview-rain": 2.12,
+    "preview-snow": 1.9,
+    "preview-storm": 1.77
+  },
+  "motion_pixel_delta": 8.563002387152777,
+  "star_signal_clear_overcast": {
+    "0": 0.21033528645833333,
+    "1": 0.0008506944444444445
+  },
+  "rain_direction_error": {
+    "5": {
+      "with_wind": 5.170593182276486,
+      "against_wind": 10.223813681277385
+    },
+    "-5": {
+      "with_wind": 5.138511934224276,
+      "against_wind": 10.181995774441328
+    }
+  },
+  "monitor_partition_pixel_delta": [
+    0.0,
+    1.5190972222222223e-05
+  ],
+  "leaf_signal": 1.3428584346064814,
+  "leaf_direction_error": {
+    "1": {
+      "with_wind": 1.3444521927785527,
+      "against_wind": 6.179613026056541
+    },
+    "-1": {
+      "with_wind": 1.0771025658054947,
+      "against_wind": 4.9819242434305195
+    }
+  },
+  "isolated_gust_frame_samples_ms": [
+    0.23,
+    0.22,
+    0.44
+  ],
+  "isolated_gust_median_frame_ms": 0.23,
+  "production_shader": "/home/rucaradio/dynwall/extension/weather.glsl",
+  "living_effect_signal": {
+    "living-wet": 3.476566116898148,
+    "living-accumulated-snow": 22.23023799189815,
+    "living-winter": 0.8542317708333332,
+    "living-spring": 1.3836046006944445,
+    "living-summer": 1.397472873263889,
+    "living-autumn": 1.3747996238425924,
+    "living-customization": 39.82204246238426,
+    "living-shooting-star": 0.024744285300925928,
+    "living-lightning": 12.408420138888888,
+    "living-fireflies": 0.008262803819444444,
+    "living-pollen": 0.004428530092592592,
+    "living-birds": 0.012533275462962963,
+    "living-ocean-wet": 4.129925130208333,
+    "pack-woodland-production": 26.97798683449074
+  },
+  "landscape_signal": 123.75861062885802,
+  "background_style_signal": {
+    "2": 7.405733506944444,
+    "3": 5.473193721064814,
+    "4": 5.913243995949074
+  },
+  "terrain_shadow_motion": 1.2868085488505747,
+  "mist_motion": 0.998742816091954,
+  "snow_advection": 9.128776765046297,
+  "wind_scintillation": 0.006334273726851851,
+  "star_twinkle": 0.02810546875
+}

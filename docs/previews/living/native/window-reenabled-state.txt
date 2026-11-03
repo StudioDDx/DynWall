@@ -1,0 +1,1 @@
+(true, '{"windows":2,"weatherVisible":true,"belowAll":true,"focused":true}')

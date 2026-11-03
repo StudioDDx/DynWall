@@ -1,0 +1,43 @@
+{
+  "running": true,
+  "preview": false,
+  "snow": 0,
+  "currentSnow": 0,
+  "currentCoverage": 0.65,
+  "coverage": 0.65,
+  "style": 1,
+  "environment": {
+    "location": "[\"wttr\",\"Fixture\",42,-83]",
+    "updatedAt": 1793521574359,
+    "snow": 0,
+    "wetness": 0.001793066877676346
+  },
+  "interval": 34,
+  "quality": "balanced",
+  "fullscreen": [
+    false,
+    false
+  ],
+  "windows": [
+    {
+      "title": "Dynwall stacking test 2",
+      "monitor": 0,
+      "fullscreen": false
+    },
+    {
+      "title": "Dynwall stacking test 1",
+      "monitor": 0,
+      "fullscreen": false
+    }
+  ],
+  "visible": [
+    true,
+    true
+  ],
+  "custom": [
+    0.4000000059604645,
+    0
+  ],
+  "pack": false,
+  "packActors": 0
+}
