@@ -255,4 +255,3 @@ Verification on the final implementation:
 
 [Day/night preview](previews/halloween-day-night.jpg) and
 [GPU measurements](previews/halloween-physics-measurements.json).
-
