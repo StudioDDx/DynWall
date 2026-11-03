@@ -386,7 +386,7 @@ vec3 dwTree(vec3 sky,vec2 p,float center,float base,float height,float seed,floa
         float foliage=clamp(u_season.y*.90+u_season.z+u_season.w*.73,0.0,1.0);
         // Autumn opens small gaps between leaf masses; winter exposes twigs.
         float gaps=smoothstep(.12,.34,dwNoise(q*31.0+seed*41.0)+foliage*.25);
-        crown*=step(.01,foliage)*gaps;
+        crown*=foliage*gaps;
     }
     vec3 haze=u_color4*mix(.30,.83,u_daylight);
     vec3 bark=mix(vec3(.020,.026,.037),vec3(.15,.12,.085),u_daylight);
