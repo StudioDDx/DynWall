@@ -31,6 +31,8 @@ MAX_MANIFEST_BYTES = 16384
 MAX_ASSET_BYTES = 32 * 1024 * 1024
 MAX_PIXELS = 32 * 1024 * 1024
 MAX_COLLECTION = 24
+DEPTH_LAYER_COUNT = 4
+MAX_PACK_TOTAL_BYTES = 96 * 1024 * 1024
 
 
 def _number(value, default, low, high):
@@ -211,7 +213,7 @@ def validate_pack_manifest(document):
     version = document.get('schemaVersion') if isinstance(document, dict) else None
     if isinstance(version, bool) or not isinstance(version, (int, float)) or version != 1:
         raise ValueError('Unsupported landscape pack version')
-    allowed = {'schemaVersion', 'id', 'name', 'horizon', 'foreground', 'author', 'license', 'description', '$schema'}
+    allowed = {'schemaVersion', 'id', 'name', 'horizon', 'foreground', 'layers', 'author', 'license', 'description', '$schema'}
     unknown = sorted(set(document) - allowed)
     if unknown:
         raise ValueError('Unsupported landscape pack fields: ' + ', '.join(unknown))
@@ -220,7 +222,14 @@ def validate_pack_manifest(document):
         raise ValueError('Pack id or name is invalid')
     if _number(horizon, -1, .1, .95) == -1 or not .1 <= horizon <= .95:
         raise ValueError('Pack horizon must be finite and between 0.1 and 0.95')
-    _relative_asset(document.get('foreground'))
+    foreground_path = str(_relative_asset(document.get('foreground')))
+    if 'layers' in document:
+        layers = document['layers']
+        if not isinstance(layers, list) or len(layers) != DEPTH_LAYER_COUNT:
+            raise ValueError('Layered packs require four depth-ordered PNGs')
+        paths = [str(_relative_asset(item)) for item in layers]
+        if len(set(paths)) != DEPTH_LAYER_COUNT or foreground_path in paths:
+            raise ValueError('Layered pack assets must have unique paths')
     for key in ('author', 'license', 'description'):
         if key in document and (not isinstance(document[key], str) or len(document[key]) > 1000):
             raise ValueError(f'Pack {key} must be a string of at most 1000 characters')
@@ -273,8 +282,10 @@ def load_pack(path):
         if current.is_symlink():
             raise ValueError('Foreground symlinks are not allowed')
     _regular(foreground, MAX_ASSET_BYTES)
+    image_dimensions = None
     try:
         with Image.open(foreground) as image:
+            image_dimensions = image.size
             if image.format != 'PNG' or image.width > 8192 or image.height > 8192 or image.width * image.height > MAX_PIXELS:
                 raise ValueError('Foreground image exceeds pack limits')
             if getattr(image, 'is_animated', False):
@@ -282,9 +293,29 @@ def load_pack(path):
             image.verify()
     except (OSError, SyntaxError, Image.DecompressionBombError) as error:
         raise ValueError('Foreground image is corrupt') from error
+    layers = []
+    for asset_path in document.get('layers', []):
+        relative_layer = _relative_asset(asset_path)
+        layer = root.joinpath(*relative_layer.parts)
+        current = root
+        for part in relative_layer.parts:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError('Layer symlinks are not allowed')
+        _regular(layer, MAX_ASSET_BYTES)
+        try:
+            with Image.open(layer) as item:
+                if item.format != 'PNG' or item.size != image_dimensions or item.mode != 'RGBA' or getattr(item, 'is_animated', False):
+                    raise ValueError('Depth layers must be static RGBA PNGs aligned with the foreground')
+                item.verify()
+        except (OSError, SyntaxError, Image.DecompressionBombError) as error:
+            raise ValueError('Depth layer image is corrupt') from error
+        layers.append(str(layer))
+    if sum(Path(p).stat().st_size for p in [str(foreground), *layers]) > MAX_PACK_TOTAL_BYTES:
+        raise ValueError('Combined landscape assets exceed 96 MiB')
     metadata = {key: document[key] for key in ('author', 'license', 'description') if key in document}
     return {'schemaVersion': 1, 'id': pack_id, 'name': name.strip(), 'horizon': float(horizon),
-            'foreground': str(foreground), 'root': str(root), **metadata}
+            'foreground': str(foreground), 'root': str(root), **({'layers':layers} if layers else {}), **metadata}
 
 
 def _foreground(pack):
@@ -308,12 +339,12 @@ def _write_private(path, data):
 
 
 def _extract_archive(source, temporary):
-    if source.stat().st_size > MAX_ASSET_BYTES + MAX_MANIFEST_BYTES:
+    if source.stat().st_size > MAX_PACK_TOTAL_BYTES + MAX_MANIFEST_BYTES:
         raise ValueError('Pack archive is too large')
     try:
         with zipfile.ZipFile(source) as archive:
             entries = archive.infolist()
-            if len(entries) > 8 or sum(item.file_size for item in entries) > MAX_ASSET_BYTES + MAX_MANIFEST_BYTES:
+            if len(entries) > 8 or sum(item.file_size for item in entries) > MAX_PACK_TOTAL_BYTES + MAX_MANIFEST_BYTES:
                 raise ValueError('Pack archive exceeds asset limits')
             seen = set()
             for item in entries:
@@ -366,6 +397,13 @@ def import_pack(source, destination=None):
             os.fsync(handle.fileno())
         manifest = {key: pack[key] for key in ('schemaVersion','id','name','horizon','author','license','description') if key in pack}
         manifest['foreground'] = 'foreground.png'
+        if pack.get('layers'):
+            manifest['layers'] = [f'layers/depth-{i}.png' for i in range(4)]
+            for i, source in enumerate(pack['layers']):
+                folder = staging / 'layers'
+                folder.mkdir(exist_ok=True)
+                target_layer = folder / f'depth-{i}.png'
+                _write_private(target_layer, Path(source).read_bytes())
         _write_private(staging / 'manifest.json', (json.dumps(manifest, ensure_ascii=False, indent=2)+'\n').encode())
         load_pack(staging)
         os.rename(staging, target)
@@ -387,8 +425,13 @@ def export_pack(pack, destination):
         with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             manifest = {key: pack[key] for key in ('schemaVersion','id','name','horizon','author','license','description') if key in pack}
             manifest['foreground'] = 'foreground.png'
+            if pack.get('layers'):
+                manifest['layers'] = [f'layers/depth-{i}.png' for i in range(4)]
             archive.writestr('manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2)+'\n')
             archive.write(pack['foreground'], 'foreground.png')
+            if pack.get('layers'):
+                for i, source in enumerate(pack['layers']):
+                    archive.write(source, f'layers/depth-{i}.png')
         with temporary.open('rb') as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, destination)

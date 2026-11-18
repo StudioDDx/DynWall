@@ -35,3 +35,33 @@ class DynwallWeatherEffect extends Shell.GLSLEffect {
         this.queue_repaint();
     }
 });
+
+export const ValleyFogEffect = GObject.registerClass(
+class DynwallValleyFogEffect extends Shell.GLSLEffect {
+    _init(source) {
+        this._source = source;
+        super._init();
+        this._locations = new Map();
+        this._uploads = new UniformUploadCache();
+    }
+
+    vfunc_build_pipeline() {
+        this._locations?.clear();
+        this._uploads?.clear();
+        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT, this._source,
+            'cogl_color_out = dynwallFog(cogl_tex_coord_in[0].xy) * cogl_color_in.a;', true);
+    }
+
+    update(uniforms) {
+        for (const [name, value] of Object.entries(uniforms)) {
+            const values = this._uploads.prepare(name, value);
+            if (!values) continue;
+            if (!this._locations.has(name))
+                this._locations.set(name, this.get_uniform_location(name));
+            const location = this._locations.get(name);
+            if (location >= 0)
+                this.set_uniform_float(location, values.length, values);
+        }
+        this.queue_repaint();
+    }
+});

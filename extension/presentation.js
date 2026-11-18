@@ -50,7 +50,15 @@ export function sanitizePack(value) {
      value.foreground.includes('\\') || value.foreground.includes('\0') || value.foreground.split('/').slice(1).some(part=>!part||part==='..'||part==='.') ||
      !value.foreground.toLowerCase().endsWith('.png') || !Number.isFinite(value.horizon) ||
      value.horizon<.1 || value.horizon>.95) return null;
- return {root:value.root,foreground:value.foreground,horizon:value.horizon};
+ const layers = value.layers;
+ if (layers !== undefined && (!Array.isArray(layers) || layers.length !== 4 ||
+     layers.some(path => typeof path !== 'string' || !path.startsWith(`${value.root}/`) ||
+       path.includes('\\') || path.includes('\0') ||
+       path.split('/').slice(1).some(part => !part || part === '.' || part === '..') ||
+       !path.toLowerCase().endsWith('.png')) ||
+     new Set(layers).size !== 4 || layers.includes(value.foreground))) return null;
+ return {root:value.root,foreground:value.foreground,horizon:value.horizon,
+     ...(layers ? {layers} : {})};
 }
 export function selectDocument(document, selection, now) {
  if (!document || !selection) return document;
