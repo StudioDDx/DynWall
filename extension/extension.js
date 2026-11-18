@@ -266,7 +266,7 @@ export default class DynwallExtension extends Extension {
             this._packDescriptor = sanitizePack(descriptor);
             this._packContent = this._loadPack(descriptor);
             this._packLayers = this._packDescriptor?.layers?.map(path =>
-                this._loadPack({...this._packDescriptor, foreground: path})) ?? null;
+                this._loadPack({root:this._packDescriptor.root, foreground:path, horizon:this._packDescriptor.horizon})) ?? null;
             if (this._packLayers?.some(content => !content)) this._packLayers = null;
             this._destroyActors();
         }
