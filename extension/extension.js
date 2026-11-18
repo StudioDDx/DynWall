@@ -305,6 +305,11 @@ export default class DynwallExtension extends Extension {
         this._group?.show();
         for (const [index, {actor}] of this._effects.entries())
             actor.visible = this._policy.visibleMonitors[index] !== false;
+        for (const {actor, view} of this._fogEffects)
+            actor.visible = this._policy.visibleMonitors.find((_, i) => {
+                const m = Main.layoutManager.monitors[i];
+                return m && m.x - this._bounds.x === view[0] && m.y - this._bounds.y === view[1];
+            }) !== false;
         const interval = Math.ceil(1000 / this._policy.fps);
         if (this._frameSource && interval === this._interval) return;
         this._stopFrame();
