@@ -63,7 +63,7 @@ def run(output, width, height, device=None, quality='balanced', reference_dir=No
         assert ok.value,log.value.decode()
         return obj
     vertex=compile_shader(0x8B31,'#version 330\nout vec2 v_uv;\nvoid main(){ vec2 p=vec2((gl_VertexID << 1) & 2,gl_VertexID & 2);v_uv=p;gl_Position=vec4(p*2.0-1.0,0,1);}')
-    fragment=compile_shader(0x8B30,'#version 330\nin vec2 v_uv;out vec4 outColor;\n'+shader+'\nvoid main(){outColor=vec4(dynwall(vec2(v_uv.x,1.0-v_uv.y)),1.0);}')
+    fragment=compile_shader(0x8B30,'#version 330\nin vec2 v_uv;out vec4 outColor;\n'+shader+'\nuniform float testTree;\nvoid main(){vec3 c=testTree>0.0?dwTree(vec3(0.0),vec2((v_uv.x-.5)*2.0,1.0-v_uv.y),0.0,.9,.6,testTree,0.0):dynwall(vec2(v_uv.x,1.0-v_uv.y));outColor=vec4(c,1.0);}')
     program=bind(gl,'glCreateProgram',uint,[])()
     attach=bind(gl,'glAttachShader',None,[uint,uint]);attach(program,vertex);attach(program,fragment)
     bind(gl,'glLinkProgram',None,[uint])(program)
@@ -276,53 +276,39 @@ def run(output, width, height, device=None, quality='balanced', reference_dir=No
     uniform('u_time', 14); later_stars=render()
     twinkle = sum(ImageStat.Stat(ImageChops.difference(windy_stars, later_stars)).mean) / 3
     assert twinkle > .001, f'No time-varying stellar twinkle: {twinkle}'
-    # Autumn leaves are decorative: zero strength must be exactly transparent.
+    # Exercise production tree geometry directly: broadleaf crowns disappear,
+    # branches survive, and evergreen needles ignore deciduous leaf fall.
+    uniform('u_surface', [0, 0]); uniform('u_daylight', 1)
+    tree_pixels = {}
+    for seed, name in [(.3, 'deciduous'), (.9, 'evergreen')]:
+        uniform('testTree', seed)
+        uniform('u_season', [0, 0, 1, 0]); summer_tree = render()
+        uniform('u_season', [.33, 0, 0, .67]); bare_tree = render()
+        capture(f'{name}-late-autumn', bare_tree, False)
+        summer_area = sum(summer_tree.convert('L').histogram()[6:])
+        bare_area = sum(bare_tree.convert('L').histogram()[6:])
+        tree_pixels[name] = {'summer': summer_area, 'late_autumn': bare_area}
+        if name == 'deciduous':
+            assert 0 < bare_area < summer_area * .35, f'Deciduous tree retains its crown: {tree_pixels}'
+        else:
+            assert ImageChops.difference(summer_tree, bare_tree).getbbox() is None, 'Evergreen shed its needles'
+    uniform('testTree', 0); uniform('u_season', [0, 0, 0, 0])
+    # Retired leaves must stay invisible even with an old gust uniform upload.
     for name, value in fixtures[0]['uniforms'].items(): uniform(name, value)
     for name in ['u_coverage', 'u_rain', 'u_snow', 'u_grain', 'u_stars', 'u_celestialDrift', 'u_glowPulse']:
         uniform(name, 0)
     still_sky = render()
-    uniform('u_leaves', [4, 0, 1, 7]); quiet_leaves = render()
-    assert ImageChops.difference(still_sky, quiet_leaves).getbbox() is None, 'Quiet gust changes the sky'
-    uniform('u_leaves', [.5, 1, 1, 7]); entering_leaves = ImageChops.difference(still_sky, render())
-    entry_left = sum(ImageStat.Stat(entering_leaves.crop((0, 0, width // 4, height))).mean) / 3
-    entry_right = sum(ImageStat.Stat(entering_leaves.crop((width * 3 // 4, 0, width, height))).mean) / 3
-    assert entry_left > .01 and entry_right < entry_left * .05, \
-        f'Leaves materialize away from the upwind edge: left={entry_left}, right={entry_right}'
-    uniform('u_leaves', [4, 1, 1, 7]); leaves_first = render(); capture('autumn-gust', leaves_first)
-    leaf_signal = sum(ImageStat.Stat(ImageChops.difference(still_sky, leaves_first)).mean) / 3
-    assert leaf_signal > .05, f'Leaves are not visible: {leaf_signal}'
-    uniform('u_landscape', [4, .2, .5]); uniform('u_leaves', [4, 0, 1, 7])
-    ocean_without_leaves = render()
-    uniform('u_leaves', [4, 1, 1, 7])
-    assert ImageChops.difference(ocean_without_leaves, render()).getbbox() is None, 'Leaves appear over open ocean'
-    uniform('u_landscape', fixtures[0]['uniforms']['u_landscape'])
-    gust_timings = []
-    for _ in range(timing_runs):
-        start = time.perf_counter()
-        for index in range(10):
-            uniform('u_leaves', [4 + index / 30, 1, 1, 7]); draw(4, 0, 3); finish()
-        gust_timings.append(round((time.perf_counter() - start) * 100, 2))
-    uniform('u_leaves', [5, 1, 1, 7]); leaves_second = render()
-    assert sum(ImageStat.Stat(ImageChops.difference(leaves_first, leaves_second)).mean) / 3 > .05, 'Leaves do not tumble or drift'
-    # Use the isolated leaf signal to verify travel in both horizontal directions.
-    leaf_direction_error = {}
-    dt = .06
-    dx, dy = max(1, round(.22 * dt * height)), max(1, round(.07 * dt * height))
-    for direction in [1, -1]:
-        uniform('u_leaves', [4, 1, direction, 7]); first = ImageChops.difference(render(), still_sky)
-        uniform('u_leaves', [4 + dt, 1, direction, 7]); second = ImageChops.difference(render(), still_sky)
-        source = first.crop((dx, 0, width-dx, height-dy))
-        errors = {}
-        for sign in [1, -1]:
-            shifted = second.crop((dx+sign*dx, dy, width-dx+sign*dx, height))
-            errors[sign] = sum(ImageStat.Stat(ImageChops.difference(source, shifted)).mean)
-        leaf_direction_error[direction] = {'with_wind': errors[direction], 'against_wind': errors[-direction]}
-        assert errors[direction] < errors[-direction] * .85, f'Leaves drift against gust: {leaf_direction_error}'
-    frames = []
-    for index in range(30):
-        uniform('u_leaves', [2 + index / 10, 1, 1, 7])
-        frames.append(render())
-    frames[0].save(output / 'autumn-gust.gif', save_all=True, append_images=frames[1:], duration=100, loop=0)
+    assert ImageChops.difference(still_sky, render()).getbbox() is None, 'Retired leaves still appear'
+    snow_signals = {}
+    for name, strength in [('flurries', .12), ('light-snow', .25), ('heavy-snow', .9)]:
+        uniform('u_snow', strength)
+        frame = render(); capture(name, frame, False)
+        snow_signals[name] = sum(ImageStat.Stat(ImageChops.difference(still_sky, frame)).mean) / 3
+    assert snow_signals['flurries'] > .005, f'Cold flurries invisible: {snow_signals}'
+    assert snow_signals['heavy-snow'] > snow_signals['light-snow'] * 2, f'Heavy snow lacks density: {snow_signals}'
+    uniform('u_time', 13)
+    assert sum(ImageStat.Stat(ImageChops.difference(frame, render())).mean) / 3 > .02, 'Snow is stationary'
+    uniform('u_snow', 0)
     # Partitioning a continuous virtual canvas into monitors must not move the sky.
     for name, value in fixtures[0]['uniforms'].items(): uniform(name, value)
     reference = render()
@@ -338,14 +324,14 @@ def run(output, width, height, device=None, quality='balanced', reference_dir=No
         assert delta < .12, f'Monitor coordinates are discontinuous: {delta}'
     bind(gl, 'glViewport', None, [integer, integer, integer, integer])(0, 0, width, height)
     uniform('u_view', [0, 0, width, height])
-    # Repeat with an active gust: particles must not jump at a monitor seam.
-    uniform('u_leaves', [4, 1, 1, 7]); reference = render()
+    # Repeat with heavy snow: flakes must not jump at a monitor seam.
+    uniform('u_snow', .9); reference = render()
     for offset, size in [(0, half), (half, width-half)]:
         bind(gl, 'glViewport', None, [integer, integer, integer, integer])(0, 0, size, height)
         uniform('u_view', [offset, 0, size, height])
         partition = render().crop((0, 0, size, height))
         delta = sum(ImageStat.Stat(ImageChops.difference(partition, reference.crop((offset, 0, offset+size, height)))).mean) / 3
-        assert delta < .12, f'Autumn leaves jump at monitor seam: {delta}'
+        assert delta < .12, f'Snow jumps at monitor seam: {delta}'
     bind(gl, 'glViewport', None, [integer, integer, integer, integer])(0, 0, width, height)
     uniform('u_view', [0, 0, width, height])
     # Additional fixtures exercise the exact same production shader after the
@@ -358,7 +344,7 @@ def run(output, width, height, device=None, quality='balanced', reference_dir=No
         living = json.loads(subprocess.check_output(['node', str(living_path)], text=True))
         living += json.loads(subprocess.check_output(['node', str(ROOT/'tests/living-preview-fixtures.mjs')], text=True))
         for fixture in living:
-            for name,value in {**fixtures[0]['uniforms'], **neutral, 'u_leaves':[0,0,0,0], **fixture['uniforms']}.items(): uniform(name,value)
+            for name,value in {**fixtures[0]['uniforms'], **neutral, **fixture['uniforms']}.items(): uniform(name,value)
             uniform('u_canvas',[width,height]);uniform('u_view',[0,0,width,height])
             frame=render();capture(fixture['name'],frame,False);images[fixture['name']]=frame
             if fixture.get('reference'):
@@ -376,7 +362,7 @@ def run(output, width, height, device=None, quality='balanced', reference_dir=No
         import sys
         sys.path.insert(0,str(ROOT))
         from dynwall_living import load_pack, pack_directory, composite_pack
-        for name,value in {**fixtures[0]['uniforms'],**neutral,'u_leaves':[0,0,0,0],'u_landscape':[0,.2,.5]}.items():uniform(name,value)
+        for name,value in {**fixtures[0]['uniforms'],**neutral,'u_landscape':[0,.2,.5]}.items():uniform(name,value)
         sky=render();capture('pack-sky-production',sky,False)
         packed=composite_pack(sky,load_pack(pack_directory('woodland')), {})
         capture('pack-woodland-production',packed,False)
@@ -390,9 +376,7 @@ def run(output, width, height, device=None, quality='balanced', reference_dir=No
         'median_frame_ms':{name:statistics.median(samples) for name,samples in timings.items()},
         'motion_pixel_delta':motion,'star_signal_clear_overcast':star_signal,
         'rain_direction_error':rain_direction_error,'monitor_partition_pixel_delta':seam_deltas,
-        'leaf_signal':leaf_signal,'leaf_direction_error':leaf_direction_error,
-        'isolated_gust_frame_samples_ms':gust_timings,
-        'isolated_gust_median_frame_ms':statistics.median(gust_timings),
+        'snow_intensity_signal':snow_signals,'seasonal_tree_pixels':tree_pixels,
         'production_shader':str(shader_source)}
     measurements['living_effect_signal'] = living_signals
     measurements['landscape_signal'] = landscape_signal

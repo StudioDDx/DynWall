@@ -52,12 +52,18 @@ PROVIDERS = {
         "default_model": "openai/gpt-5.4-nano",
         "env_key": "OPENROUTER_API_KEY",
     },
+    "custom": {
+        "url": "",  # resolved at runtime from cfg["base_url"]
+        "default_model": "",
+        "env_key": "",
+    },
 }
 
 DEFAULTS = {
     "enabled": True,
     "provider": "openai",
     "api_key": "",
+    "base_url": "",
     "model": "",
     "prompt": "",
     "theme": "",
@@ -109,7 +115,7 @@ Celestial may be null; type sun/moon, size [0.03,0.15], drift [0,0.05].
 Landscape style hills/alpine/dunes/ocean/none, height [0.1,0.3], mist [0,1]. Stars [0,600], only for darkness.
 Mesh style none/lines/lowpoly, density [10,28], opacity [0.02,0.16]. Grain [0,0.06], vignette [0,1].
 Prefer gentle grain (<=0.015), vignette (<=0.3), restrained celestial size and unhurried motion.
-The renderer controls observed cloud cover, rain, snow, solar lighting and decorative seasonal gusts independently. Do not invent weather measurements or unsupported objects."""
+The renderer controls observed cloud cover, rain, snow, solar lighting and seasonal scenery independently. Do not invent weather measurements or unsupported objects."""
 
 
 def _bool(v, default):
@@ -151,8 +157,9 @@ def load_config() -> dict:
             print(f"config: ignoring unreadable {CONFIG_FILE} ({e})", file=sys.stderr)
 
     provider = str(raw.get("provider", cfg["provider"])).lower()
-    cfg["provider"] = provider if provider in ("openai", "openrouter", "none") else DEFAULTS["provider"]
+    cfg["provider"] = provider if provider in ("openai", "openrouter", "custom", "none") else DEFAULTS["provider"]
     cfg["api_key"] = raw["api_key"] if isinstance(raw.get("api_key"), str) else ""
+    cfg["base_url"] = raw["base_url"].strip() if isinstance(raw.get("base_url"), str) else ""
     cfg["model"] = raw["model"] if isinstance(raw.get("model"), str) else ""
     cfg["prompt"] = raw["prompt"] if isinstance(raw.get("prompt"), str) else ""
     for k in ("theme", "theme_until", "background"):
@@ -171,7 +178,7 @@ def load_config() -> dict:
     from dynwall_living import normalize_living_config
     cfg.update(normalize_living_config({**raw, **cfg}))
 
-    if cfg["provider"] in PROVIDERS:
+    if cfg["provider"] in ("openai", "openrouter"):
         p = PROVIDERS[cfg["provider"]]
         cfg["api_key"] = os.environ.get(p["env_key"], "").strip() or cfg["api_key"]
         if not cfg["model"]:
@@ -341,26 +348,43 @@ def llm_spec(now: datetime, weather: str, cfg: dict):
     provider = cfg.get("provider", "openai")
     if provider == "none" or provider not in PROVIDERS:
         return None
-    key = os.environ.get(PROVIDERS[provider]["env_key"], "").strip() or cfg.get("api_key")
-    if not key:
+
+    # Resolve endpoint URL and credentials.
+    if provider == "custom":
+        url = cfg.get("base_url", "").strip()
+        if not url:
+            print("LLM spec failed (custom provider: base_url is empty); using fallback", file=sys.stderr)
+            return None
+        # Normalise: append /chat/completions if the URL looks like a bare base URL.
+        if not url.rstrip("/").endswith("/chat/completions"):
+            url = url.rstrip("/") + "/chat/completions"
+        env_key_val = ""
+        default_model = ""
+    else:
+        p = PROVIDERS[provider]
+        url = p["url"]
+        env_key_val = os.environ.get(p["env_key"], "").strip()
+        default_model = p["default_model"]
+
+    key = env_key_val or cfg.get("api_key", "")
+    model = cfg.get("model") or default_model
+    if not key and provider != "custom":
         return None
+
     prompt = build_art_prompt(now, weather, cfg)
-    headers = {"Authorization": f"Bearer {key}"}
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
     if provider == "openrouter":
         headers["HTTP-Referer"] = "dynwall"
     try:
         import requests
-        r = requests.post(
-            PROVIDERS[provider]["url"],
-            headers=headers,
-            json={
-                "model": cfg.get("model") or PROVIDERS[provider]["default_model"],
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "max_completion_tokens": 900,
-            },
-            timeout=30,
-        )
+        payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+            "max_completion_tokens": 900,
+        }
+        if model:
+            payload["model"] = model
+        r = requests.post(url, headers=headers, json=payload, timeout=30)
         r.raise_for_status()
         spec = json.loads(r.json()["choices"][0]["message"]["content"])
         # minimal validation
@@ -544,14 +568,19 @@ def build_scene(spec, mesh_enabled: bool = True, landscape_enabled: bool = True)
             a = int(60 * (1 - (rr - cr) / (cr * 1.2)))
             d.ellipse([ccx - rr, ccy - rr, ccx + rr, ccy + rr], fill=(*halo_c, a))
         d.ellipse([ccx - cr, ccy - cr, ccx + cr, ccy + cr], fill=(*halo_c, 235))
-        if ctype == "moon":  # simple crater shading
+        if ctype == "moon":
+            # Shade over the solid disc; drawing low alpha into the tile itself
+            # replaces its opacity and exposes dark sky as crater-shaped holes.
+            shading = Image.new("RGBA", cel_tile.size, (0, 0, 0, 0))
+            crater_draw = ImageDraw.Draw(shading)
             rng_c = random.Random(7)
             for _ in range(7):
                 ang = rng_c.uniform(0, 6.283)
                 dist = rng_c.uniform(0, cr * 0.7)
                 mx, my = ccx + dist * math.cos(ang), ccy + dist * math.sin(ang)
                 mr = rng_c.uniform(cr * 0.06, cr * 0.16)
-                d.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=(160, 170, 200, 60))
+                crater_draw.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=(160, 170, 200, 36))
+            cel_tile.alpha_composite(shading.filter(ImageFilter.GaussianBlur(max(1.5, cr * .06))))
         cel_tile = cel_tile.filter(ImageFilter.GaussianBlur(1.5))
 
     # stars: stored as data (twinkle computed per frame)

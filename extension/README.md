@@ -27,21 +27,24 @@ treats that absent-height value as the default landscape, while an explicit
 `[0, .2, .5]` still disables terrain. This preserves the visual upgrade when only
 the shader can reload; the new JS/settings controls require their updated modules.
 
-`renderer.seasonalEffects` defaults to true and controls the autumn event clock
-in `seasonal.js`. The clock advances from the existing active frame delta, so
-lock, overview, reduced motion and display sleep also pause events. It has no
-timer of its own. Disabling seasonal effects resets the clock; re-enabling starts
-quietly. Events use the local calendar and the live snapshot's hemisphere, with
-a northern-calendar fallback when location is missing. They never modify weather
-observations: the gust adds only decorative cloud advection and a dedicated
-`u_leaves` uniform. Two procedural leaf layers share the continuous monitor canvas;
-zero-strength gusts skip leaf rendering. No seasonal texture downloads are needed.
+`renderer.seasonalEffects` and `living.seasonal_effects` control seasonal scenery
+and decorative cold-weather flurries. Below 2 C (35.6 F), fresh observations can
+produce light flurries, fading in toward freezing. Rain suppresses these decorative
+flakes. Reported snow still renders when seasonal decoration is disabled.
+Windborne autumn leaves have been removed.
+
+Deciduous trees finish shedding in late autumn and stay bare through winter;
+evergreens retain their needles. The seasonal cycle reverses in the southern
+hemisphere. Snow catches evergreen boughs, while ground cover builds gradually
+from actual snowfall rates or reported snow conditions. Heavy snow is denser,
+falls faster, and builds cover faster than light snow. Cold decorative flurries
+alone never create ground cover; thawing temperatures melt accumulated cover.
 
 `$XDG_CACHE_HOME/dynwall/scene.json` supplies schema version 1, art-directed `spec`, and `renderer`. `$XDG_CACHE_HOME/topweather/current.json` supplies the live snapshot. Missing/invalid/older-than-two-hour weather does **not** fall back to the embedded scene snapshot, so changing location cannot resurrect an invalidated observation.
 
 The gradient, glow, grain, mesh and optional celestial design remain controller-owned. Missing celestial artwork gets a decorative sun/moon; fresh coordinates use an approximate solar ephemeris without fixed clock-hour or timezone assumptions. Reported `isNight` is a fallback when coordinates are unknown. Solar lighting, star visibility, and sun/moon type override stale day/night artwork while preserving explicit disc position/size; the palette itself is not rewritten. Moon position/phase are decorative, not astronomical claims.
 
-Cloud coverage is observed percent. Wind is converted from km/h and meteorological FROM direction. Rain and snow use exported canonical rates when available. When rates are unavailable, known `wttr` or `openmeteo` condition codes can select a **visual particle preset**, not an invented measurement; explicit zero rates win. Freezing drizzle/rain use liquid streaks; snow, sleet and ice-pellet condition codes share a solid-particle visual preset. Unknown providers do not get WMO code interpretation. Total precipitation is never assumed to be rain, and snow depth is never assumed to be water equivalent.
+Cloud coverage is observed percent. Wind is converted from km/h and meteorological FROM direction. Rain and snow use exported canonical rates when available. When rates are unavailable, known `wttr` or `openmeteo` condition codes can select a **visual particle preset**, not an invented measurement; explicit zero rates win for reported precipitation and accumulation. Freezing drizzle/rain use liquid streaks; snow, sleet and ice-pellet condition codes share a solid-particle visual preset. Unknown providers do not get WMO code interpretation. Total precipitation is never assumed to be rain, and snow depth is never assumed to be water equivalent.
 
 ## Reproduction without enabling GNOME extensions
 
@@ -54,7 +57,7 @@ python3 tests/render_shader.py --device 0 --quality low --output /tmp/dynwall-lo
 python3 tests/render_shader.py --device 0 --quality high --output /tmp/dynwall-high
 ```
 
-Requires Python Pillow, Node, and system EGL/OpenGL. `--device 0` selects NVIDIA on the target machine; device ordering is environment-specific. Without `--device`, EGL may choose software rendering even when GLX uses NVIDIA. The harness emits weather PNGs, an autumn gust GIF and `measurements.json`; it asserts visible animation, cloud occlusion of stars, leaf travel with both wind directions, zero-strength transparency, and split-monitor rendering equivalence. Its GPU draw timings exclude GNOME compositing and do not prove real-desktop FPS or idle power.
+Requires Python Pillow, Node, and system EGL/OpenGL. `--device 0` selects NVIDIA on the target machine; device ordering is environment-specific. Without `--device`, EGL may choose software rendering even when GLX uses NVIDIA. The harness emits weather PNGs and `measurements.json`; it asserts visible animation, cloud occlusion of stars, removal of windborne leaves, flurry visibility, heavy-snow density, and split-monitor rendering equivalence. Its GPU draw timings exclude GNOME compositing and do not prove real-desktop FPS or idle power.
 
 Living-environment controls are published in the additive `scene.living` contract.
 `living.js` keeps environmental history, season/event selection and performance

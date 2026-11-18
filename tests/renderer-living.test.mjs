@@ -71,3 +71,27 @@ test('cloudy autumn nights still offer occasional atmospheric moments',()=>{
  }
  assert.ok(active>0);
 });
+
+test('decorative cold flurries never manufacture accumulating snow',()=>{
+ const w=snapshot({temp:-5,snowfall:0}),first=api.advanceEnvironment(null,w,now);
+ let state=first;
+ for(let minute=1;minute<=60;minute++)state=api.advanceEnvironment(state,w,now+minute*60000);
+ assert.equal(state.snow,0);
+});
+
+test('heavy reported snowfall builds more cover than light snow and persists after snow stops',()=>{
+ for(const [provider,light,heavy]of [['open-meteo',71,75],['wttr',326,338]]) {
+  const advance=code=>{const w=snapshot({snowfall:null,weatherCode:code,temp:-5},{provider});let s=api.advanceEnvironment(null,w,now);for(let m=1;m<=30;m++)s=api.advanceEnvironment(s,w,now+m*60000);return s;};
+  const small=advance(light),large=advance(heavy);
+  assert.ok(large.snow>small.snow*2);
+  assert.ok(large.snow>.5);
+  const stopped=api.advanceEnvironment(large,snapshot({temp:-5},{provider}),now+31*60000);
+  assert.ok(stopped.snow>large.snow*.99);
+ }
+});
+
+test('deciduous foliage is shed by late autumn in either hemisphere',()=>{
+ assert.equal(api.seasonState(Date.UTC(2026,10,14,12),42).foliage,0);
+ assert.equal(api.seasonState(Date.UTC(2026,4,14,12),-42).foliage,0);
+ assert.ok(api.seasonState(Date.UTC(2026,6,15,12),42).foliage>.95);
+});

@@ -362,7 +362,8 @@ def import_pack(source, destination=None):
         with asset.open('xb') as handle:
             os.chmod(asset, 0o600)
             image.save(handle, format='PNG')
-            handle.flush(); os.fsync(handle.fileno())
+            handle.flush()
+            os.fsync(handle.fileno())
         manifest = {key: pack[key] for key in ('schemaVersion','id','name','horizon','author','license','description') if key in pack}
         manifest['foreground'] = 'foreground.png'
         _write_private(staging / 'manifest.json', (json.dumps(manifest, ensure_ascii=False, indent=2)+'\n').encode())

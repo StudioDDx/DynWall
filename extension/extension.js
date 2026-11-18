@@ -8,9 +8,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as LoginManager from 'resource:///org/gnome/shell/misc/loginManager.js';
 import {WeatherEffect} from './shader.js';
-import {AutumnGusts, advanceAdvection, isAutumn, supportsWindborneLeaves} from './seasonal.js';
 import {Lifetime, shouldAnimate, isInputChange, isDisplayAsleep} from './lifecycle.js';
-import {sanitizeScene, weatherUniforms, monitorLayout, withCelestial} from './state.js';
+import {sanitizeScene, weatherUniforms, monitorLayout, withCelestial, advanceAdvection} from './state.js';
 import {resolvePresentation, transitionPresentation, sanitizePack, selectDocument, shouldResetEnvironment} from './presentation.js';
 import {sanitizeLiving, seasonState, advanceEnvironment, rareMoments, performancePolicy, resolveSchedule, livingUniforms} from './living.js';
 
@@ -46,7 +45,6 @@ export default class DynwallExtension extends Extension {
         this._reloadSource = 0;
         this._elapsed = 0;
         this._flow = [0, 0];
-        this._gusts = new AutumnGusts();
         this._effects = [];
         this._current = null;
         this._suspended = false;
@@ -266,11 +264,10 @@ export default class DynwallExtension extends Extension {
             this._destroyActors();
         }
         this._target = this._scene ? {
-            ...withCelestial(this._scene.uniforms, displayedWeather, this._clock), ...weatherUniforms(displayedWeather, this._clock),
+            ...withCelestial(this._scene.uniforms, displayedWeather, this._clock), ...weatherUniforms(displayedWeather, this._clock, {coldFlurries: this._scene.seasonalEffects && this._living.seasonal_effects}),
         } : null;
         if (this._target && this._packContent)
             this._target.u_landscape = [0, ...this._target.u_landscape.slice(1)];
-        this._autumnEnabled = !!this._scene?.seasonalEffects && isAutumn(this._clock, snapshot?.latitude);
         this._nextRead = GLib.get_monotonic_time() + 15000000;
         if (!this._scene?.enabled) {
             this._current = null;
@@ -372,13 +369,8 @@ export default class DynwallExtension extends Extension {
         const intensity = this._living?.scene_customization?.animation_intensity ?? 1;
         dt *= intensity;
         this._elapsed += dt;
-        const leafSource = supportsWindborneLeaves(this._target.u_landscape[0], !!this._packContent);
-        const leaves = this._gusts.update(dt, {
-            enabled: this._autumnEnabled && leafSource, windX: this._current.u_wind[0],
-        });
-        // Integrate wind to avoid a position discontinuity when weather direction/speed changes.
-        // Decorative gusts never alter the authoritative weather uniforms.
-        this._flow = advanceAdvection(this._flow, this._current.u_wind, leaves, dt);
+        // Integrate observed wind into continuous flow; no decorative gust input.
+        this._flow = advanceAdvection(this._flow, this._current.u_wind, dt);
         const quality = {low: 0, balanced: 1, high: 2}[this._policy?.quality ?? this._scene.quality];
         const eventClock = this._presentation.preview ? this._clock + this._elapsed * 1000 : Date.now();
         const moments = rareMoments(eventClock, {enabled: intensity > 0,
@@ -392,7 +384,6 @@ export default class DynwallExtension extends Extension {
             if (!actor.visible) continue;
             effect.update({...this._current, ...additions, u_canvas: [this._bounds.width, this._bounds.height],
                 u_view: view, u_time: this._elapsed, u_flow: this._flow, u_quality: quality,
-                u_leaves: leaves,
                 // Honor the user's landscape switch immediately, independently
                 // of the slow interpolation used for changing weather and light.
                 u_landscape: this._target.u_landscape});
@@ -426,7 +417,6 @@ export default class DynwallExtension extends Extension {
         this._life = null;
         this._scene = this._target = this._current = this._shader = null;
         this._settings = this._login = null;
-        this._gusts = null;
         this._packContent = this._packDescriptor = this._living = this._season = this._policy = null;
         this._monitors = [];
     }

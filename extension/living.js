@@ -1,3 +1,4 @@
+import {snowfallIntensity, temperatureC} from './state.js';
 // Pure living-environment boundaries shared by GNOME and deterministic tests.
 const finite=v=>typeof v==='number'&&Number.isFinite(v);
 const bound=(v,fallback,lo,hi)=>finite(v)?Math.max(lo,Math.min(hi,v)):fallback;
@@ -45,18 +46,16 @@ export function seasonState(now=Date.now(),latitude=45) {
  for(const [name,centre]of Object.entries({winter:0,spring:.25,summer:.5,autumn:.75})) {
   const distance=Math.min(Math.abs(phase-centre),1-Math.abs(phase-centre));result[name]=Math.max(0,1-distance*4);
  }
- result.foliage=Math.max(0,Math.min(1,result.spring*.8+result.summer+result.autumn*.5));return result;
+ // Leaf fall finishes in late autumn; spring buds return as winter recedes.
+ const t=bound((result.winter-.05)/.20,0,0,1),leaves=1-t*t*(3-2*t);
+ result.foliage=Math.max(0,Math.min(1,result.spring*.90+result.summer+result.autumn*.73))*leaves;return result;
 }
 function weather(snapshot,now) {
  if(!object(snapshot)||snapshot.schemaVersion!==1||!finite(snapshot.fetchedAt)||now-snapshot.fetchedAt>7200000||snapshot.fetchedAt>now+300000||!object(snapshot.current))return null;
  const current=snapshot.current,wttr=snapshot.provider==='wttr',known=wttr||['openmeteo','open-meteo'].includes(snapshot.provider);
  const rainCodes=wttr?[176,185,200,263,266,281,284,293,296,299,302,305,308,311,314,353,356,359,386,389]:[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99];
- const snowCodes=wttr?[179,182,227,230,317,320,323,326,329,332,335,338,350,362,365,368,371,374,377,392,395]:[71,73,75,77,85,86];
  const rain=finite(current.rain)?1-Math.exp(-bound(current.rain,0,0,200)/4):known&&rainCodes.includes(Number(current.weatherCode))?.38:0;
- const snow=finite(current.snowfall)?1-Math.exp(-bound(current.snowfall,0,0,200)/2):known&&snowCodes.includes(Number(current.weatherCode))?.42:0;
- let temp=finite(current.temp)?current.temp:null;
- if(temp!==null&&snapshot.unit==='f')temp=(temp-32)*5/9;
- if(!['c','f'].includes(snapshot.unit))temp=null;
+ const snow=snowfallIntensity(snapshot),temp=temperatureC(snapshot);
  return {rain,snow,temp,location:JSON.stringify([snapshot.provider??'',snapshot.location??'',snapshot.latitude??null,snapshot.longitude??null])};
 }
 export function advanceEnvironment(previous,snapshot,now=Date.now()) {

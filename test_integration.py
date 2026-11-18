@@ -1,5 +1,7 @@
 """CLI and settings regressions; all desktop/network side effects isolated."""
 import importlib.machinery
+from datetime import datetime
+import importlib.util
 import json
 import os
 import shutil
@@ -14,19 +16,23 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent
 
+def _load_source(name, path):
+    spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, str(path)))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 class CliTests(unittest.TestCase):
     def test_master_off_prevents_timer_run_from_touching_wallpaper(self):
-        module = importlib.machinery.SourceFileLoader(
-            "dynwall_disabled_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_disabled_test", ROOT / "dynwall")
         with patch.object(module, "load_config", return_value=dict(module.DEFAULTS, enabled=False)), \
              patch.object(module, "set_wallpaper", side_effect=AssertionError("wallpaper changed")), \
              patch.object(module, "write_scene", side_effect=AssertionError("scene changed")):
             self.assertEqual(module.main([]), 0)
 
     def test_environment_key_takes_precedence_over_saved_key(self):
-        module = importlib.machinery.SourceFileLoader(
-            "dynwall_env_config_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_env_config_test", ROOT / "dynwall")
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "config.json"
             path.write_text(json.dumps({"provider": "openai", "api_key": "saved-test-key"}))
@@ -35,8 +41,7 @@ class CliTests(unittest.TestCase):
                 self.assertTrue(module.load_config()["api_key"] == "environment-test-key")
 
     def test_direct_art_generation_uses_environment_key_over_passed_config(self):
-        module = importlib.machinery.SourceFileLoader(
-            "dynwall_env_request_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_env_request_test", ROOT / "dynwall")
         import requests
         from datetime import datetime
         scene = {"gradient": ["#123456", "#abcdef"]}
@@ -53,9 +58,40 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result, scene)
         self.assertEqual(used_environment, [True])
 
+    def test_custom_provider_normalises_base_url_and_skips_auth_when_keyless(self):
+        module = _load_source("dynwall_custom_provider_test", ROOT / "dynwall")
+        import requests
+        from datetime import datetime
+        scene = {"gradient": ["#123456", "#abcdef"]}
+        response = types.SimpleNamespace(raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": json.dumps(scene)}}]})
+        calls = []
+        def post(url, **kwargs):
+            calls.append((url, kwargs["headers"], kwargs["json"]["model"]))
+            return response
+        with patch.object(requests, "post", side_effect=post):
+            result = module.llm_spec(datetime(2026, 10, 30), "clear",
+                dict(module.DEFAULTS, provider="custom", base_url="http://localhost:11434/v1",
+                     model="llama3.2", api_key=""))
+        self.assertEqual(result, scene)
+        self.assertEqual(calls[0][0], "http://localhost:11434/v1/chat/completions")
+        self.assertEqual(calls[0][1], {})  # no credentials configured: headerless request
+        self.assertEqual(calls[0][2], "llama3.2")
+        # An explicit /chat/completions endpoint is not double-appended.
+        with patch.object(requests, "post", side_effect=post):
+            module.llm_spec(datetime(2026, 10, 30), "clear",
+                dict(module.DEFAULTS, provider="custom",
+                     base_url="https://llm.example.com/api/v1/chat/completions", model="m"))
+        self.assertEqual(calls[1][0], "https://llm.example.com/api/v1/chat/completions")
+
+    def test_custom_provider_without_base_url_falls_back_quietly(self):
+        module = _load_source("dynwall_custom_nobase_test", ROOT / "dynwall")
+        result = module.llm_spec(datetime(2026, 10, 30), "clear",
+            dict(module.DEFAULTS, provider="custom", base_url=""))
+        self.assertIsNone(result)
+
     def test_invalid_numeric_settings_use_defaults(self):
-        module = importlib.machinery.SourceFileLoader(
-            "dynwall_config_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_config_test", ROOT / "dynwall")
         invalid_numbers = [float("inf"), float("-inf"), float("nan"), True, 10 ** 400]
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "config.json"
@@ -74,7 +110,7 @@ class CliTests(unittest.TestCase):
                         self.assertEqual(cfg[field], expected, field)
 
     def test_explicit_zero_frame_count_clamps_to_one(self):
-        module = importlib.machinery.SourceFileLoader("dynwall_zero_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_zero_test", ROOT / "dynwall")
         with tempfile.TemporaryDirectory() as td:
             cache = Path(td)
             cfg = dict(module.DEFAULTS, provider="none", width=64, height=32)
@@ -87,7 +123,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(len(list((cache / "frames").glob("*.png"))), 1)
 
     def test_missing_topweather_does_not_start_a_second_weather_poller(self):
-        module = importlib.machinery.SourceFileLoader("dynwall_cli_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_cli_test", ROOT / "dynwall")
         with tempfile.TemporaryDirectory() as td:
             cache = Path(td)
             cfg = dict(module.DEFAULTS, provider="none", width=64, height=32)
@@ -154,13 +190,11 @@ class CliTests(unittest.TestCase):
 class SettingsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.settings = importlib.machinery.SourceFileLoader(
-            "dynwall_settings_test", str(ROOT / "dynwall-settings")).load_module()
+        cls.settings = _load_source("dynwall_settings_test", ROOT / "dynwall-settings")
 
     def test_background_choices_round_trip_through_settings_and_cli(self):
         settings = self.settings
-        module = importlib.machinery.SourceFileLoader(
-            "dynwall_background_config_test", str(ROOT / "dynwall")).load_module()
+        module = _load_source("dynwall_background_config_test", ROOT / "dynwall")
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "config.json"
             with patch.object(settings, "CONFIG_DIR", td), patch.object(settings, "CONFIG_PATH", str(path)), \

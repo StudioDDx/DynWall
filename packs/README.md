@@ -3,7 +3,12 @@
 Woodland River is an original 2560×1440 illustrated foreground authored locally
 with Pillow. It includes layered hills, a river meadow, a pine grove, and an open
 canopy oak. The sky is transparent so the production native sky animates behind
-it. No artwork downloads or model keys were used. Rebuild it with:
+it. No artwork downloads or model keys were used. Trees and shrubs come from
+painted RGBA sprites in [woodland-src](woodland-src/) when present
+(`pine-tall`, `pine-medium`, `pine-young`, `oak-full`, `treeline-band`,
+`rhododendron`, `grass-clump`, each `<name>.png`, transparent background,
+matching the names in the generator); each missing sprite falls back to the
+procedural drawing so the pack always rebuilds. Rebuild it with:
 
 ```sh
 /usr/bin/python3 packs/author_woodland.py

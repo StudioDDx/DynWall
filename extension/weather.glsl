@@ -17,7 +17,6 @@ uniform vec3 u_landscape;
 uniform float u_coverage, u_rain, u_snow;
 uniform vec2 u_wind;
 // Decorative event age, fade envelope, direction and stable seed.
-uniform vec4 u_leaves;
 uniform vec4 u_custom;
 uniform vec2 u_tint, u_surface;
 uniform vec4 u_season, u_moments;
@@ -118,54 +117,15 @@ float dwSnow(vec2 p) {
         if(float(i)>u_quality+1.0) break;
         float layer=float(i), scale=18.0+layer*16.0;
         vec2 q=p*scale;
-        q.y-=u_time*(1.3+layer*.6);
+        q.y-=u_time*(1.3+layer*.6)*mix(1.0,1.65,u_snow);
         q.x+=sin(p.y*3.0+u_time*.4+layer*7.0)*.55-u_flow.x*scale*6.0;
         vec2 cell=floor(q), f=fract(q)-.5;
         float seed=dwHash(cell+layer*19.0);
         f+=vec2(sin(seed*32.0+u_time*.3),cos(seed*42.0))*.25;
-        float radius=mix(.035,.13,seed)/(1.0+layer*.25);
-        snow+=exp(-dot(f,f)/(radius*radius))*step(1.0-u_snow*.48,seed)*(.7-layer*.12);
+        float radius=mix(.045,.16,seed)/(1.0+layer*.25);
+        snow+=exp(-dot(f,f)/(radius*radius))*step(1.0-u_snow*mix(.48,.90,u_snow),seed)*(.7-layer*.12);
     }
     return snow;
-}
-vec3 dwLeaves(vec3 sky, vec2 p) {
-    float age=u_leaves.x, direction=u_leaves.z;
-    float aspect=u_canvas.x/max(1.0,u_canvas.y);
-    float across=direction>0.0 ? p.x/aspect : 1.0-p.x/aspect;
-    float front=min(1.2,age*.18);
-    float source=1.0-smoothstep(front,front+.18,across);
-    // Two bounded depth layers; no per-leaf actors, textures or particle uploads.
-    for(int i=0;i<2;i++) {
-        float layer=float(i), scale=mix(6.5,3.8,layer);
-        vec2 travel=vec2(direction*(age*.22+.02*sin(age*1.1)),age*.07);
-        vec2 q=(p-travel)*scale;
-        vec2 cell=floor(q);
-        float seed=dwHash(cell+vec2(u_leaves.w,layer*23.7));
-        if(seed < mix(.77,.65,layer)) continue;
-        vec2 f=fract(q)-.5;
-        f-=vec2(sin(seed*45.0+age*1.7),cos(seed*27.0+age*.9))*.09;
-        // Reject empty pixels before the shape, rotation and vein calculations.
-        if(max(abs(f.x),abs(f.y))>.3) continue;
-        float angle=seed*31.4+age*(1.1+seed*.9);
-        float c=cos(angle),s=sin(angle);
-        vec2 leaf=mat2(c,-s,s,c)*f;
-        leaf.x/= .38+.62*abs(cos(age*2.1+seed*17.0));
-        float theta=atan(leaf.y,leaf.x);
-        float lobes=1.0-abs(fract(theta*(5.0/6.283185)+.5)*2.0-1.0);
-        float radius=.065+.065*lobes+.012*sin(theta);
-        float aa=max(.001,scale/u_canvas.y*.8);
-        float body=1.0-smoothstep(radius-aa,radius+aa,length(leaf));
-        float stem=(1.0-smoothstep(.006,.006+aa,abs(leaf.x))) *
-            smoothstep(.07,.085,leaf.y)*(1.0-smoothstep(.18,.19,leaf.y));
-        float veins=(1.0-smoothstep(.002,.002+aa,abs(leaf.x)))+
-            (1.0-smoothstep(.002,.002+aa,abs(abs(leaf.x)*.65-abs(leaf.y+.02))))*.45;
-        vec3 gold=vec3(.91,.55,.08),rust=vec3(.64,.18,.045),red=vec3(.70,.27,.09);
-        vec3 pigment=mix(gold,mix(rust,red,seed),smoothstep(.78,1.0,seed));
-        pigment*= (.78+.22*cos(angle))*(.35+.65*u_daylight);
-        pigment=mix(pigment,pigment*.48,clamp(veins,0.0,1.0)*body*.5);
-        sky=mix(sky,pigment,max(body,stem*.8)*u_leaves.y*source*mix(.62,.96,layer));
-    }
-    return sky;
 }
 float dwRidge(float x,float layer,float height,float style) {
     float relief=1.0+u_custom.y;
@@ -179,12 +139,16 @@ float dwRidge(float x,float layer,float height,float style) {
     if(style>2.5) return 1.0-height+layer*.055+
         (sin(x*1.7+layer*1.8)*.035+sin(x*3.1+layer)*.015+
          (dwNoise(vec2(x*5.0,layer*8.0))-.5)*.008)*height/.2*relief;
-    // Broad landforms with smaller erosion folds, shared by all ground masks.
-    float folds=(dwNoise(vec2(x*9.0,layer*17.1))-.5)*.009+
-        (dwNoise(vec2(x*26.0,layer*5.7))-.5)*.003;
-    return 1.0-height+layer*.055+
-        (sin(x*2.0+layer*2.0)*.045+sin(x*5.3+layer*3.0)*.018+
-         sin(x*11.0+layer)*.006+folds)*height/.2*relief;
+    // Great Smoky Mountains: long parallel ridges with rounded, ancient crests.
+    // Erosion leaves soft forested domes stacked in depth, each receding band
+    // bluer than the last. Two noise scales build the "waves of mountains"
+    // massif plus cross-range spurs; sines keep the crests convex, not jagged.
+    float massif=abs(dwNoise(vec2(x*2.6,layer*5.3+11.0))-.5)*2.0;
+    float spurs=abs(dwNoise(vec2(x*7.2,layer*9.7+4.0))-.5)*2.0;
+    float crestTexture=dwNoise(vec2(x*23.0,layer*15.0))-.5;
+    float profile=massif*.115+spurs*.038+crestTexture*.006+
+        sin(x*1.35+layer*1.2)*.030+sin(x*4.4+layer*2.6)*.010;
+    return 1.0-height+layer*.052+(profile-.048)*height/.2*relief;
 }
 vec3 dwOcean(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
     float horizon=1.0-terrain.y;
@@ -235,7 +199,7 @@ vec3 dwLandscape(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
             float twigs=dwNoise(vec2(p.x*380.0,layer*11.0));
             ridge-=(.003+crowns*.010+twigs*.002)*grove*(.5+layer*.28);
         }
-        float fog=(.72-layer*.28)*(.65+mist*.55);
+        float fog=(.78-layer*.30)*(.65+mist*.55);
         // Slower, depth-separated ground wisps use the same wind as the clouds.
         // Their strength is art direction; it does not claim measured fog.
         if(mist>.001) {
@@ -263,7 +227,12 @@ vec3 dwLandscape(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
             float fold=dwNoise(vec2(faceX*19.0+layer*11.0,p.y*9.0));
             float meadow=dwNoise(vec2(p.x*145.0,p.y*390.0)+layer*27.0);
             float thicket=dwNoise(vec2(p.x*57.0,p.y*105.0)+layer*9.0);
+            // Dense conifer forest cloaks every Smokies slope; individual crowns
+            // read as fine speckle that dissolves into the blue air with distance.
+            float canopy=dwNoise(vec2(faceX*(210.0-layer*30.0),p.y*(170.0-layer*22.0))+layer*13.0);
             vec3 green=mix(vec3(.023,.042,.058),vec3(.12,.22,.19),u_daylight);
+            vec3 conifer=mix(vec3(.015,.033,.028),vec3(.065,.145,.105),u_daylight);
+            green=mix(green,conifer,smoothstep(.35,.75,canopy)*.72);
             vec3 earth=mix(u_color0*.26,vec3(.20,.25,.19),u_daylight);
             vec3 material=mix(green,earth,smoothstep(.40,.82,fold)*.45);
             material*=.66+diffuse*.30+thicket*.17;
@@ -272,7 +241,7 @@ vec3 dwLandscape(vec3 sky,vec2 p,vec3 terrain,vec2 lightPos) {
             vec3 blueAir=mix(horizon,u_color2*mix(.30,.82,u_daylight),.48);
             pigment=mix(material,blueAir,air);
             // Detail diminishes into the blue atmospheric distance.
-            pigment*=1.0+(meadow*.08+thicket*.06-.07)*(1.0-air);
+            pigment*=1.0+(meadow*.08+thicket*.06+canopy*.05-.09)*(1.0-air);
             // Fine grass flecks emerge toward the viewer, never in the sky.
             float blades=pow(dwNoise(vec2(p.x*520.0,p.y*140.0)),5.0);
             pigment+=vec3(.035,.037,.018)*blades*depth*layer*u_daylight;
@@ -384,7 +353,8 @@ vec3 dwTree(vec3 sky,vec2 p,float center,float base,float height,float seed,floa
         if(leaderCrown>crown) shade=.42;
         crown=max(crown,leaderCrown);
         float foliage=clamp(u_season.y*.90+u_season.z+u_season.w*.73,0.0,1.0);
-        // Autumn opens small gaps between leaf masses; winter exposes twigs.
+        // Finish shedding in late autumn; evergreen crowns bypass this branch.
+        foliage*=1.0-smoothstep(.05,.25,u_season.x);
         float gaps=smoothstep(.12,.34,dwNoise(q*31.0+seed*41.0)+foliage*.25);
         crown*=foliage*gaps;
     }
@@ -401,7 +371,33 @@ vec3 dwTree(vec3 sky,vec2 p,float center,float base,float height,float seed,floa
     // Snow catches exposed crown edges and pine boughs, retaining dark pockets.
     float snow=u_surface.x*smoothstep(.45,.75,dwNoise(q*25.0)+shade*.3);
     leafColor=mix(leafColor,mix(vec3(.16,.21,.30),vec3(.80,.86,.88),u_daylight),snow*.85);
-    return mix(sky,mix(leafColor,haze,air),crown);
+    // In deep winter the conifers wear festive strings: small colored bulbs
+    // hug the outer boughs and twinkle gently, dimming to nothing by day.
+    vec3 decor=vec3(0.0);
+    if(conifer>.5) {
+        float holiday=smoothstep(.55,.85,u_season.x)*(1.0-smoothstep(.25,.60,u_daylight));
+        if(holiday>.001) {
+            for(int j=0;j<9;j++) {
+                float fj=float(j);
+                float hx=dwHash(vec2(seed*97.0,fj+3.0));
+                float hy=dwHash(vec2(fj+seed*13.0,seed*61.0+fj));
+                float side=mod(fj,2.0)*2.0-1.0;
+                // Bulbs zigzag down the tree, riding the drooping bough tips.
+                float ty=mix(-.90,-.22,(fj+.5+hx*.6)/9.0);
+                float bough=(1.0+ty)*.39;
+                vec2 lp=vec2(lean*(-ty)+side*bough*mix(.52,.92,hy),ty);
+                vec2 d=(q-lp)/vec2(.045,.040);
+                float bulb=exp(-dot(d,d));
+                float halo=exp(-dot(d,d)*.22)*.30;
+                float pick=dwHash(vec2(fj+seed*29.0,7.7));
+                vec3 tint=pick<.22?vec3(1.0,.16,.12):pick<.44?vec3(1.0,.72,.22):
+                    pick<.66?vec3(.25,.45,1.0):pick<.86?vec3(.15,.85,.35):vec3(1.0,.88,.66);
+                float shimmer=.30+.70*(.5+.5*sin(u_time*(1.2+hy*2.6)+hx*6.283+fj*1.3));
+                decor+=tint*(bulb+halo)*shimmer*holiday*crown;
+            }
+        }
+    }
+    return mix(sky,mix(leafColor,haze,air),crown)+decor;
 }
 vec3 dwLivingSeason(vec3 sky,vec2 p,vec3 terrain) {
     if(terrain.x<.5||terrain.x>2.5) return sky;
@@ -429,9 +425,30 @@ vec3 dwLivingSeason(vec3 sky,vec2 p,vec3 terrain) {
 vec3 dwLivingMoments(vec3 sky,vec2 p) {
  float aspect=u_canvas.x/max(1.0,u_canvas.y),phase=clamp(u_birds.y,0.0,1.0),seed=u_birds.z;
  if(u_moments.x>.001) {
-  vec2 head=vec2((.18+seed*.35+phase*.32)*aspect,.11+seed*.10+phase*.14),tail=head-vec2(.13,.045);
-  float streak=exp(-pow(dwLivingSegment(p,tail,head)/.0012,2.0)),nucleus=exp(-dot(p-head,p-head)/.000006);
-  sky+=vec3(.70,.80,1.0)*(streak*.65+nucleus)*u_moments.x;
+  // A meteor streaking down across the upper sky: incandescent coma, soft
+  // halo, and an ionisation trail that tapers and cools away from the head.
+  // Per-event character: white-blue shower meteor, green magnesium flash,
+  // or slow amber reentry (decaying space junk burning through the layer).
+  float side=fract(seed*5.7)<.5?-1.0:1.0;
+  float slope=mix(.26,.58,dwHash(vec2(seed,3.7)));
+  vec2 travel=normalize(vec2(side*mix(.72,1.0,dwHash(vec2(seed,9.1))),slope));
+  float span=mix(.11,.18,dwHash(vec2(seed,5.3)));
+  vec2 head=vec2((.22+seed*.36+side*phase*.30)*aspect,.16+seed*.10+phase*.15);
+  vec2 tail=head-travel*span;
+  vec2 v=head-tail;
+  float t=clamp(dot(p-tail,v)/max(dot(v,v),.0000001),0.0,1.0);
+  float across=dwLivingSegment(p,tail,head);
+  // The trail widens and brightens toward the leading edge, fading to a
+  // thread at its far end; granular shimmer breaks up a flat painted line.
+  float width=mix(.00035,.0017,pow(t,1.6));
+  float trail=exp(-pow(across/width,2.0))*pow(t,2.2)*
+      (.72+.28*dwNoise(vec2(t*46.0,seed*57.0)));
+  float kind=dwHash(vec2(seed,17.3));
+  vec3 tint=kind<.55?vec3(.72,.82,1.0):kind<.80?vec3(.60,.95,.70):vec3(1.0,.74,.46);
+  vec3 trailColor=mix(tint*.30,vec3(1.0,.98,.94),t);
+  float coma=exp(-dot(p-head,p-head)/.000009);
+  float halo=exp(-dot(p-head,p-head)/.00010);
+  sky+=(trailColor*trail*.60+tint*coma*.95+vec3(.88,.94,1.0)*halo*.12)*u_moments.x;
  }
  if(u_moments.y>.001) {
   float center=(.28+seed*.46)*aspect,zig=center+sin(floor(p.y*27.0)*13.7+seed*21.0)*.013;
@@ -547,7 +564,6 @@ vec3 dynwall(vec2 localUV) {
     if(dot(abs(u_tint),vec2(1.0))>.000001)
         sky=sky*(1.0-u_tint.y*.65)+vec3(u_tint.x*.07,0.0,-u_tint.x*.07);
     vec2 vignette=uv-.5;
-    if(u_leaves.y>.001 && terrain.x<2.5) sky=dwLeaves(sky,p);
     sky*=1.0-u_vignette*min(1.0,dot(vignette,vignette)*1.3)*.6;
     if(u_grain != 0.0) sky+=(dwHash(floor(p*u_canvas.y)+floor(u_time*30.0))-.5)*u_grain*.48;
     return clamp(sky,0.0,1.0);

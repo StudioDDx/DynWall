@@ -171,10 +171,12 @@ sleep 1
 state >"$OUT/fresh-state.txt"
 # Construct the real settings UI in this private session, never on the user's display.
 WAYLAND_DISPLAY=dynwall-smoke GDK_BACKEND=wayland /usr/bin/python3 - <<'PYGTK'
-import importlib.machinery,os,subprocess
+import importlib.machinery, importlib.util, os, subprocess
 from gi.repository import GLib
 from pathlib import Path
-m=importlib.machinery.SourceFileLoader('settings_smoke',str(Path(os.environ['ROOT'])/'dynwall-settings')).load_module()
+_spec = importlib.util.spec_from_loader('settings_smoke', importlib.machinery.SourceFileLoader('settings_smoke', str(Path(os.environ['ROOT']) / 'dynwall-settings')))
+m = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(m)
 app=m.DynwallSettingsApp();app.register(None);window=m.SettingsWindow(app)
 cfg=window._collect();assert cfg['weather_fps']==30 and cfg['weather_quality']=='balanced'
 assert cfg['enabled'] is True
@@ -210,14 +212,22 @@ assert window._collect()['seasonal_effects'] is False
 window.destroy();print('GTK settings construction: PASS')
 PYGTK
 "/usr/bin/python3" "$ROOT/tests/check_living_gnome.py"
-# Trigger a deterministic event only inside the private Shell, independent of
-# the real season/random delay. Exercise production frame uploads on both actors.
+# Feed cold weather only to the isolated session; verify actual frame uploads.
+python3 - <<'PYCOLD'
+import json,os
+from pathlib import Path
+p=Path(os.environ['OUT'])/'cache/topweather/current.json';d=json.loads(p.read_text())
+d['unit']='c';d['current'].update(temp=-3,rain=0,snowfall=0)
+q=p.with_suffix('.tmp');q.write_text(json.dumps(d));q.replace(p)
+PYCOLD
+sleep 2
 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval \
-    '(() => {const e=Main.extensionManager.lookup("dynwall@rucaradio").stateObj; e._stopFrame(); e._autumnEnabled=true; e._gusts._wait=0; for(let i=0;i<30;i++)e._draw(.1); return {leavesVisible:e._effects.every(({effect})=>effect._uploads._values.get("u_leaves")?.[1]>.9),observedCoverage:e._target.u_coverage};})()' \
-    >"$OUT/gust-active-state.txt"
-grep -q '"leavesVisible":true' "$OUT/gust-active-state.txt"
-grep -q '"observedCoverage":0.65' "$OUT/gust-active-state.txt"
-gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Screenshot --method org.gnome.Shell.Screenshot.Screenshot false false "$OUT/autumn-gust.png" >/dev/null
+    '(() => {const e=Main.extensionManager.lookup("dynwall@rucaradio").stateObj; e._current=null; e._draw(.1); return {flurries:e._target.u_snow===.12,snowUploaded:e._effects.every(({effect})=>effect._uploads._values.get("u_snow")>0),leavesRemoved:e._effects.every(({effect})=>!effect._uploads._values.has("u_leaves")),observedCoverage:e._target.u_coverage};})()' \
+    >"$OUT/cold-flurries-state.txt"
+for expected in '"flurries":true' '"snowUploaded":true' '"leavesRemoved":true' '"observedCoverage":0.65'; do
+    grep -q "$expected" "$OUT/cold-flurries-state.txt"
+done
+gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Screenshot --method org.gnome.Shell.Screenshot.Screenshot false false "$OUT/cold-flurries.png" >/dev/null
 python3 - <<'PYSEASON'
 import json,os
 from pathlib import Path
@@ -226,12 +236,12 @@ q=p.with_suffix('.tmp');q.write_text(json.dumps(d));q.replace(p)
 PYSEASON
 sleep 1
 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval \
-    '(() => {const e=Main.extensionManager.lookup("dynwall@rucaradio").stateObj; return {seasonalDisabled:!e._scene.seasonalEffects,leavesHidden:e._effects.every(({effect})=>effect._uploads._values.get("u_leaves")?.[1]===0),weatherRunning:!!e._frameSource,observedCoverage:e._target.u_coverage};})()' \
-    >"$OUT/gust-disabled-state.txt"
-for expected in '"seasonalDisabled":true' '"leavesHidden":true' '"weatherRunning":true' '"observedCoverage":0.65'; do
-    grep -q "$expected" "$OUT/gust-disabled-state.txt"
+    '(() => {const e=Main.extensionManager.lookup("dynwall@rucaradio").stateObj; return {seasonalDisabled:!e._scene.seasonalEffects,flurriesDisabled:e._target.u_snow===0,weatherRunning:!!e._frameSource,observedCoverage:e._target.u_coverage};})()' \
+    >"$OUT/flurries-disabled-state.txt"
+for expected in '"seasonalDisabled":true' '"flurriesDisabled":true' '"weatherRunning":true' '"observedCoverage":0.65'; do
+    grep -q "$expected" "$OUT/flurries-disabled-state.txt"
 done
-echo 'GNOME autumn gust uploads and seasonal off switch: PASS'
+echo 'GNOME cold flurry uploads, leaf removal and seasonal off switch: PASS'
 # Landscape control must remove terrain without disabling ordinary sky animation.
 python3 - <<'PYLANDSCAPE'
 import json,os

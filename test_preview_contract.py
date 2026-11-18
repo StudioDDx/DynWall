@@ -1,9 +1,15 @@
-import importlib.machinery,json,tempfile,time,unittest
+import importlib.machinery, importlib.util, json, tempfile, time, unittest
 from datetime import datetime,timedelta
 from pathlib import Path
 from unittest.mock import patch
 import dynwall_living as living
 ROOT=Path(__file__).resolve().parent
+
+def _load_source(name, path):
+    spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, str(path)))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 class PreviewContractTests(unittest.TestCase):
  def test_metadata_rejects_invalid_hours_and_huge_timestamps(self):
   now=1800000000
@@ -15,7 +21,7 @@ class PreviewContractTests(unittest.TestCase):
   expected=datetime.fromtimestamp(now).replace(hour=0,minute=0,second=0,microsecond=0)+timedelta(days=1)
   self.assertEqual(value['previewClock'],int(expected.timestamp()*1000))
  def test_cli_malformed_preview_renders_same_as_live(self):
-  m=importlib.machinery.SourceFileLoader('preview_contract_cli',str(ROOT/'dynwall')).load_module()
+  m=_load_source('preview_contract_cli',ROOT/'dynwall')
   fixed=datetime(2026,11,1,12)
   class Clock(datetime):
    @classmethod

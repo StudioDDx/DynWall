@@ -1,5 +1,6 @@
 """Local theme behavior, with desktop and network boundaries isolated."""
 import importlib.machinery
+import importlib.util
 import json
 from datetime import datetime
 from pathlib import Path
@@ -8,7 +9,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent
-app = importlib.machinery.SourceFileLoader('dynwall_theme_tests', str(ROOT / 'dynwall')).load_module()
+_spec = importlib.util.spec_from_loader('dynwall_theme_tests', importlib.machinery.SourceFileLoader('dynwall_theme_tests', str(ROOT / 'dynwall')))
+app = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(app)
 
 
 class ThemeTests(unittest.TestCase):

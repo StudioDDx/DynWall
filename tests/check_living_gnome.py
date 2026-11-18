@@ -2,6 +2,7 @@
 import ast
 import copy
 import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,10 @@ ROOT=Path(os.environ['ROOT']); OUT=Path(os.environ['OUT'])
 sys.path.insert(0,str(ROOT))
 from dynwall_weather import write_scene
 from dynwall_living import normalize_living_config
-cli=importlib.machinery.SourceFileLoader('living_smoke_cli',str(ROOT/'dynwall')).load_module()
+
+_spec = importlib.util.spec_from_loader('living_smoke_cli', importlib.machinery.SourceFileLoader('living_smoke_cli', str(ROOT / 'dynwall')))
+cli = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(cli)
 scene=OUT/'cache/dynwall/scene.json'; preview=scene.with_name('preview.json')
 original=json.loads(scene.read_text())
 base=copy.deepcopy(original)

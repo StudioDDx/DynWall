@@ -146,3 +146,27 @@ test('fresh day and night override stale celestial type but retain composition',
     // Current solar geometry wins over an observation fetched before sunset.
     assert.equal(state.withCelestial(sun, {latitude:0,longitude:0,current:{isNight:false}}, Date.UTC(2026,2,20,0)).u_celestial[3], 2);
 });
+
+test('cold weather adds light decorative flurries with Celsius and Fahrenheit parity', () => {
+    const cold = {...weather({temp: -3, rain: 0, snowfall: 0}), unit: 'c'};
+    const snow = state.weatherUniforms(cold, now).u_snow;
+    assert.ok(snow > 0 && snow < .2);
+    assert.equal(state.weatherUniforms({...cold, unit: 'f', current: {...cold.current, temp: 26.6}}, now).u_snow, snow);
+    for (const changed of [
+        {...cold, current: {...cold.current, temp: 3}},
+        {...cold, current: {...cold.current, rain: 2}},
+        {...cold, unit: 'unknown'}, {...cold, fetchedAt: now - 7200001},
+    ]) assert.equal(state.weatherUniforms(changed, now).u_snow, 0);
+    assert.equal(state.weatherUniforms(cold, now, {coldFlurries: false}).u_snow, 0);
+});
+
+test('reported heavy snow is stronger than light snow for both weather providers', () => {
+    for (const [provider, light, moderate, heavy] of [['open-meteo', 71, 73, 75], ['wttr', 326, 332, 338]]) {
+        const intensity = code => state.weatherUniforms({...weather({weatherCode: code}), provider}, now).u_snow;
+        assert.ok(intensity(light) > 0);
+        assert.ok(intensity(light) < intensity(moderate));
+        assert.ok(intensity(moderate) < intensity(heavy));
+        assert.ok(intensity(heavy) >= .8);
+        assert.equal(state.weatherUniforms({...weather({weatherCode: heavy, snowfall: 0}), provider}, now).u_snow, 0);
+    }
+});

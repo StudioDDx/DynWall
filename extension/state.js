@@ -50,7 +50,30 @@ export function sanitizeScene(document, now = Date.now()) {
     };
 }
 
-export function weatherUniforms(snapshot, now = Date.now()) {
+// Shared snowfall strength for particles and accumulated cover. Rates win over codes.
+export function snowfallIntensity(snapshot) {
+    const current = snapshot.current;
+    if (finite(current.snowfall)) return 1 - Math.exp(-bound(current.snowfall, 0, 0, 200) / 2);
+    const code = Number(current.weatherCode);
+    if (snapshot.provider === 'wttr') {
+        if ([230, 338, 371, 395].includes(code)) return .9;
+        if ([227, 329, 332, 335, 365, 377].includes(code)) return .5;
+        if ([179, 182, 317, 320, 323, 326, 350, 362, 368, 374, 392].includes(code)) return .22;
+    } else if (['openmeteo', 'open-meteo'].includes(snapshot.provider)) {
+        if ([75, 86].includes(code)) return .9;
+        if (code === 73) return .5;
+        if ([71, 77, 85].includes(code)) return .22;
+    }
+    return 0;
+}
+
+export function temperatureC(snapshot) {
+    const temp = snapshot.current?.temp;
+    if (!finite(temp)) return null;
+    return snapshot.unit === 'c' ? temp : snapshot.unit === 'f' ? (temp - 32) * 5 / 9 : null;
+}
+
+export function weatherUniforms(snapshot, now = Date.now(), {coldFlurries = true} = {}) {
     const result = {u_coverage: 0, u_rain: 0, u_snow: 0, u_wind: [0, 0]};
     if (!object(snapshot) || snapshot.schemaVersion !== 1 || !finite(snapshot.fetchedAt) ||
         now - snapshot.fetchedAt > 7200000 || snapshot.fetchedAt > now + 300000 || !object(snapshot.current))
@@ -58,16 +81,18 @@ export function weatherUniforms(snapshot, now = Date.now()) {
     const current = snapshot.current;
     result.u_coverage = bound(current.cloudCover, 0, 0, 100) / 100;
     result.u_rain = 1 - Math.exp(-bound(current.rain, 0, 0, 200) / 4);
-    result.u_snow = 1 - Math.exp(-bound(current.snowfall, 0, 0, 200) / 2);
+    result.u_snow = snowfallIntensity(snapshot);
     // These are visual presets from reported condition codes, NOT measured mm/hour.
     // A measured zero wins; never infer rain from total precipitation or snow depth.
     const code = Number(current.weatherCode);
     const wttr = snapshot.provider === 'wttr';
     const knownCodes = wttr || ['openmeteo', 'open-meteo'].includes(snapshot.provider);
     const rainCodes = wttr ? [176, 185, 200, 263, 266, 281, 284, 293, 296, 299, 302, 305, 308, 311, 314, 353, 356, 359, 386, 389] : [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
-    const snowCodes = wttr ? [179, 182, 227, 230, 317, 320, 323, 326, 329, 332, 335, 338, 350, 362, 365, 368, 371, 374, 377, 392, 395] : [71, 73, 75, 77, 85, 86];
     if (knownCodes && !finite(current.rain) && rainCodes.includes(code)) result.u_rain = 0.38;
-    if (knownCodes && !finite(current.snowfall) && snowCodes.includes(code)) result.u_snow = 0.42;
+    // Decorative cold-air flurries never feed the accumulation model.
+    const temp = temperatureC(snapshot);
+    if (coldFlurries && temp !== null && temp < 2 && result.u_rain === 0)
+        result.u_snow = Math.max(result.u_snow, .12 * Math.min(1, (2 - temp) / 3));
     // Meteorological direction is FROM north, clockwise. Screen x east, y south.
     if (finite(current.windDirection) && finite(current.windSpeedKmh)) {
         const angle = bound(current.windDirection, 0, 0, 360) * Math.PI / 180;
@@ -149,4 +174,10 @@ export function withCelestial(uniforms, snapshot, now = Date.now()) {
     // Moon placement is art direction, not an ephemeris or a measured observation.
     return {...uniforms, u_daylight: daylight, u_stars: day ? 0 : Math.max(200, uniforms.u_stars),
         u_celestial: explicit ? [...uniforms.u_celestial.slice(0, 3), day ? 1 : 2] : [day ? x : .76, day ? y : .26, day ? .038 : .032, day ? 1 : 2]};
+}
+
+export function advanceAdvection(flow, wind, seconds) {
+    const dt = Math.max(0, Math.min(.2, finite(seconds) ? seconds : 0));
+    return [0, 1].map(index => (finite(flow?.[index]) ? flow[index] : 0) +
+        (finite(wind?.[index]) ? wind[index] : 0) * dt * .0015);
 }

@@ -5,17 +5,18 @@ Run: python3 test_dynwall.py
 """
 
 import json
-import sys
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 from PIL import ImageChops, ImageStat
-
+import importlib.util
 from importlib.machinery import SourceFileLoader
 
-dynwall = SourceFileLoader("dynwall", str(Path(__file__).parent / "dynwall")).load_module()
+_spec = importlib.util.spec_from_loader("dynwall", SourceFileLoader("dynwall", str(Path(__file__).parent / "dynwall")))
+dynwall = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(dynwall)
 
 
 class TestHelpers(unittest.TestCase):
@@ -151,6 +152,18 @@ class TestArtDirection(unittest.TestCase):
         with patch.object(dynwall, "W", 1), patch.object(dynwall, "H", 1):
             image = dynwall.compose(dynwall.build_scene({"gradient": ["#123456", "#789abc"]}), 0, 0)
         self.assertEqual(image.size, (1, 1))
+
+
+class TestMoon(unittest.TestCase):
+    def test_crater_shading_does_not_punch_transparent_holes_in_the_moon(self):
+        spec = {"gradient": ["#121e30", "#344050"],
+                "celestial": {"type": "moon", "size": .15},
+                "grain": 0, "mesh": {"style": "none"}}
+        with patch.object(dynwall, "W", 320), patch.object(dynwall, "H", 240):
+            tile = dynwall.build_scene(spec)["cel_tile"]
+        center = tile.width // 2
+        interior = tile.getchannel("A").crop((center-16, center-16, center+16, center+16))
+        self.assertGreaterEqual(interior.getextrema()[0], 230)
 
 
 if __name__ == "__main__":

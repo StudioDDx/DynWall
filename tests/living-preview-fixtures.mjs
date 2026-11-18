@@ -8,5 +8,5 @@ console.log(JSON.stringify([['sunrise',6],['day',12],['night',0],['rain',12],['s
  const base=sanitizeScene(p.document,now).uniforms;
  return {name:`preview-${scenario}`,uniforms:{...withCelestial(base,p.snapshot,p.clock),...weatherUniforms(p.snapshot,p.clock),
   ...livingUniforms(sanitizeLiving({}),p.environment,seasonState(now,42),null),
-  u_time:12,u_flow:[.02,.002],u_leaves:[0,0,0,0]}};
+  u_time:12,u_flow:[.02,.002]}};
 })));

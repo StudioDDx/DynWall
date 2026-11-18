@@ -33,6 +33,7 @@ DEFAULTS = {
     "enabled": True,
     "provider": "openai",
     "api_key": "",
+    "base_url": "",
     "model": "",
     "prompt": "",
     "theme": "",
@@ -51,7 +52,7 @@ DEFAULTS = {
     "weather_quality": "balanced",
 }
 
-PROVIDERS = ["openai", "openrouter", "none"]
+PROVIDERS = ["openai", "openrouter", "custom", "none"]
 BACKGROUNDS = ["auto", "ridges", "alpine", "dunes", "ocean", "sky"]
 BACKGROUND_LABELS = ["Automatic / art director", "Smoky Mountain Ridges", "Alpine Stillness",
                      "Amber Dunes", "Tidal Light", "Open Sky"]
@@ -63,8 +64,9 @@ BACKGROUND_DESCRIPTIONS = [
     "An open horizon with wind-driven water and broken sun or moon reflections.",
     "An uninterrupted sky with the full weather and sun/moon animation.",
 ]
-PROVIDER_LABELS = {"openai": "OpenAI", "openrouter": "OpenRouter", "none": "None (offline)"}
-DEFAULT_MODELS = {"openai": "gpt-5.4-nano", "openrouter": "openai/gpt-5.4-nano", "none": ""}
+PROVIDER_LABELS = {"openai": "OpenAI", "openrouter": "OpenRouter",
+                   "custom": "Custom (Ollama / OmniRouter / …)", "none": "None (offline)"}
+DEFAULT_MODELS = {"openai": "gpt-5.4-nano", "openrouter": "openai/gpt-5.4-nano", "custom": "", "none": ""}
 
 
 def find_repo_dir():
@@ -128,6 +130,8 @@ def load_config():
         cfg["weather_quality"] = "balanced"
     if cfg["provider"] not in PROVIDERS:
         cfg["provider"] = DEFAULTS["provider"]
+    if not isinstance(cfg.get("base_url"), str):
+        cfg["base_url"] = ""
     if cfg["background"] not in BACKGROUNDS:
         cfg["background"] = "auto"
     return normalize_living_config(cfg)
@@ -251,21 +255,29 @@ class SettingsWindow(Adw.ApplicationWindow):
         self.provider_row.connect("notify::selected", self._on_provider_changed)
         provider_group.add(self.provider_row)
 
+        self.base_url_row = Adw.EntryRow(title="Base URL")
+        self.base_url_row.set_text(self.cfg.get("base_url", ""))
+        self.base_url_row.set_tooltip_text(
+            "OpenAI-compatible endpoint base URL, e.g. http://localhost:11434/v1  "
+            "or https://openrouter.ai/api/v1 — /chat/completions is appended automatically"
+        )
+        provider_group.add(self.base_url_row)
+
         self.key_row = Adw.PasswordEntryRow(title="API key")
         self.key_row.set_text(self.cfg["api_key"])
         provider_group.add(self.key_row)
 
-        key_note = Gtk.Label(
+        self.key_note = Gtk.Label(
             label="Uses $OPENAI_API_KEY / $OPENROUTER_API_KEY first. A saved key is an optional fallback.",
             xalign=0,
             wrap=True,
         )
-        key_note.add_css_class("dim-label")
-        key_note.add_css_class("caption")
-        key_note.set_margin_start(12)
-        key_note.set_margin_end(12)
-        key_note.set_margin_bottom(6)
-        provider_group.add(key_note)
+        self.key_note.add_css_class("dim-label")
+        self.key_note.add_css_class("caption")
+        self.key_note.set_margin_start(12)
+        self.key_note.set_margin_end(12)
+        self.key_note.set_margin_bottom(6)
+        provider_group.add(self.key_note)
 
         self.model_row = Adw.EntryRow(title="Model")
         self.model_row.set_text(self.cfg["model"])
@@ -327,7 +339,7 @@ class SettingsWindow(Adw.ApplicationWindow):
 
         self.seasonal_row = Adw.SwitchRow(
             title="Seasonal effects",
-            subtitle="Occasional autumn gusts swirl colorful leaves across the sky",
+            subtitle="Seasonal scenery: foliage cycles, cold-weather flurries and winter snow cover",
         )
         self.seasonal_row.set_active(self.cfg["seasonal_effects"])
         behavior_group.add(self.seasonal_row)
@@ -411,25 +423,42 @@ class SettingsWindow(Adw.ApplicationWindow):
         return PROVIDERS[self.provider_row.get_selected()]
 
     def _update_model_placeholder(self):
-        default = DEFAULT_MODELS.get(self._selected_provider(), "")
-        self.model_row.set_tooltip_text(
-            f"Leave empty to use the default: {default}" if default
-            else "Model name (unused when provider is None)"
-        )
+        provider = self._selected_provider()
+        if provider == "custom":
+            self.model_row.set_tooltip_text(
+                "Model name served by your custom endpoint, e.g. llama3.2 or gpt-5.4-nano"
+            )
+        else:
+            default = DEFAULT_MODELS.get(provider, "")
+            self.model_row.set_tooltip_text(
+                f"Leave empty to use the default: {default}" if default
+                else "Model name (unused when provider is None)"
+            )
 
     def _update_sensitivity(self):
         enabled = self.master_row.get_active()
         provider = self._selected_provider()
         network = self.network_row.get_active()
         sensitive = enabled and provider != "none" and network
+        is_custom = provider == "custom"
         self.background_row.set_sensitive(enabled)
         self.network_row.set_sensitive(enabled)
         self.animation_row.set_sensitive(enabled)
-        self.key_row.set_sensitive(enabled and provider != "none")
+        self.base_url_row.set_visible(is_custom)
+        self.key_row.set_sensitive(enabled and provider not in ("none",))
         self.model_row.set_sensitive(sensitive)
         self.fps_row.set_sensitive(enabled and self.animation_row.get_active())
         self.quality_row.set_sensitive(enabled and self.animation_row.get_active())
         self.seasonal_row.set_sensitive(enabled and self.animation_row.get_active())
+        # Update the key hint depending on provider.
+        if is_custom:
+            self.key_note.set_text(
+                "API key for the custom endpoint (optional for Ollama). Leave empty if the server requires none."
+            )
+        else:
+            self.key_note.set_text(
+                "Uses $OPENAI_API_KEY / $OPENROUTER_API_KEY first. A saved key is an optional fallback."
+            )
 
     def _collect(self):
         buf = self.prompt_view.get_buffer()
@@ -437,6 +466,7 @@ class SettingsWindow(Adw.ApplicationWindow):
             "enabled": self.master_row.get_active(),
             "provider": self._selected_provider(),
             "api_key": self.key_row.get_text().strip(),
+            "base_url": self.base_url_row.get_text().strip(),
             "model": self.model_row.get_text().strip(),
             "prompt": buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip(),
             "theme": self.cfg["theme"],

@@ -16,7 +16,7 @@ done
 # Validate the package before touching binaries, services, or the installed extension.
 for file in dynwall dynwall-settings dynwall-settings.desktop dynwall_weather.py .env.example systemd/dynwall.service \
     systemd/dynwall.timer systemd/dynwall-play.service extension/metadata.json \
-    extension/extension.js extension/state.js extension/lifecycle.js extension/seasonal.js \
+    extension/extension.js extension/state.js extension/lifecycle.js \
     extension/shader.js extension/uniforms.js extension/weather.glsl dynwall_ding_menu.py; do
     if [ ! -f "$REPO/$file" ]; then
         echo "error: incomplete Dynwall package: missing $file" >&2

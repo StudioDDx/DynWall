@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "id": "woodland",
-  "name": "Woodland River",
+  "name": "Woodland River & Smokies",
   "horizon": 0.72,
   "foreground": "foreground.png",
-  "description": "An original illustrated river meadow, layered hills, pine grove and open-canopy oak. Transparent sky for native weather animation.",
+  "description": "An original Smokies-inspired landscape featuring layered blue ridges, a mountain stream, rustic log cabin with chimney smoke, Cades Cove split-rail fence, rhododendron blossoms, black bear family, and grazing deer under transparent animated weather.",
   "author": "DynWall local illustration",
   "license": "CC0-1.0"
 }

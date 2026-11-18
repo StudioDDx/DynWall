@@ -6,7 +6,6 @@ const make = (name, spec, current) => ({name, uniforms: {
     ...sanitizeScene({schemaVersion: 1, generatedAt: now, spec, renderer: {enabled: true}}, now).uniforms,
     ...weatherUniforms({schemaVersion: 1, fetchedAt: now, provider: 'open-meteo', current}, now),
     u_daylight: spec.stars > 0 ? 0 : 1, u_quality: 1, u_time: 12, u_flow: [0.02, 0.002],
-    u_leaves: [0, 0, 0, 0],
 }});
 const day = {gradient: ['#28466d', '#6597b6', '#d3d8cf'], accent: '#e0b36a', glow: {color: '#ffe5b9', x: .74, y: .34, size: 1.1, intensity: .85}, celestial: {type:'sun', x:.74, y:.34, size:.046}, mesh:{style:'none'}, grain:.01, vignette:.25};
 const night = {gradient:['#080f24','#172740','#41596c'], accent:'#7c90b1', stars:450, celestial:{type:'moon', x:.77,y:.26,size:.039}, mesh:{style:'none'}, grain:.008, vignette:.3};

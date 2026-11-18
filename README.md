@@ -84,20 +84,20 @@ weather requests, and it does not read TopWeather's private Shell objects.
 - The same moving cloud field casts soft shadows over the hills. Slope lighting
   follows the sun/moon direction; distant layers retain their misty depth.
   Art-directed ground mist drifts more slowly than the clouds. Calm weather
-  leaves clouds and mist still, apart from enabled decorative autumn gusts.
+  leaves clouds and mist still.
 - Stars scintillate independently, with stronger variation near the horizon
   and in wind; cloud cover naturally hides them. Snow uses integrated wind
   displacement, so a new wind observation does not teleport the flakes.
   These are local visual approximations, not a physical weather simulation.
-- In autumn, occasional decorative gusts carry tumbling gold, rust and amber
-  leaves across the desktop and briefly push the clouds. The first gust starts
-  after 12–35 seconds of active animation; later gusts follow quiet intervals of
-  90–240 seconds. Each lasts 10–18 seconds with a gradual build and fade.
-  September–November is autumn in the northern hemisphere, March–May in the
-  southern hemisphere; missing location uses the northern calendar. These are
-  artistic events, separate from reported weather, and pause with the animation.
+- In cold weather (below 2 °C), fresh observations can add light decorative
+  flurries, fading in toward freezing; rain suppresses them. Reported snow
+  still renders when seasonal decoration is off. Deciduous trees finish
+  shedding in late autumn and stay bare through winter; evergreens retain
+  their needles, and snow catches their boughs. Ground snow builds gradually
+  from reported snowfall and melts in thawing temperatures; decorative
+  flurries alone never create cover. These are local artistic approximations,
+  separate from measured accumulation, and pause with the animation.
   Turn off **Seasonal effects** in settings to keep only the usual sky/weather.
-  [See an animated gust preview](docs/previews/autumn-gust.gif).
 - Rain/snow follow reported conditions. When a measured rate is unavailable,
   a **visual intensity preset** is used; it is not presented as a measurement.
 - wttr's `precipMM` has no declared measurement period, so it is not mislabeled
@@ -169,7 +169,7 @@ pale amber sunlight, copper hills and mist) and **Witching Hour** by night
 (ink-and-plum sky, an ember halo around a silver moon and violet shadows).
 TopWeather's fresh day/night observation selects the version at each scene
 refresh; without that observation, local hours 07:00–18:00 select daytime.
-Clouds, wind, rain, snow and autumn leaves retain the existing weather and
+Clouds, wind, rain and snow retain the existing weather and
 seasonal animation. Both versions work without AI credentials.
 Set `"theme": "halloween"` and `"theme_until": "2026-11-01"` in the configuration,
 then run `dynwall` to apply it. The cutoff is exclusive and uses the local date;
@@ -186,7 +186,7 @@ optional Halloween AI direction is available in `themes/halloween.txt`.
 | --- | --- | --- |
 | `enabled` | `true` | Master state for the timer, GNOME extension, and Dynwall wallpaper |
 | `allow_animation` | `true` | Allow the installed GNOME extension to animate |
-| `seasonal_effects` | `true` | Allow decorative autumn gusts and blowing leaves |
+| `seasonal_effects` | `true` | Allow seasonal scenery: foliage cycles, cold-weather flurries, winter snow cover |
 | `weather_fps` | `30` | Frame cap, 15–60; 30 recommended |
 | `weather_quality` | `"balanced"` | `low`, `balanced`, or `high` cloud detail |
 | `mesh_enabled` | `true` | Include the existing geometric sky treatment |

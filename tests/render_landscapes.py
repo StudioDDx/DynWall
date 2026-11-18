@@ -19,7 +19,6 @@ ROOT = Path(__file__).resolve().parents[1]
 NEUTRAL = {
     'u_custom': [0, 0, 0, 0], 'u_tint': [0, 0], 'u_surface': [0, 0],
     'u_season': [0, 0, 0, 0], 'u_moments': [0, 0, 0, 0], 'u_birds': [0, 0, 0],
-    'u_leaves': [0, 0, 0, 0],
 }
 
 

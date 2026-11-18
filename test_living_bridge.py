@@ -1,6 +1,7 @@
 """Production bridge acceptance: controls must reach published and fallback scenes."""
 import copy
 import importlib.machinery
+import importlib.util
 import json
 from pathlib import Path
 import tempfile
@@ -9,6 +10,13 @@ from unittest.mock import patch
 from dynwall_weather import build_scene_document
 
 ROOT=Path(__file__).resolve().parent
+
+def _load_source(name, path):
+    spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, str(path)))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 class LivingBridgeTests(unittest.TestCase):
  def test_scene_carries_controls_without_mutating_config_or_art(self):
   cfg={'background':'alpine','persistent_weather':False,'scene_customization':{'warmth':.7},'api_key':'private-test'}
@@ -19,20 +27,20 @@ class LivingBridgeTests(unittest.TestCase):
   self.assertNotIn('api_key',json.dumps(scene))
   self.assertEqual((cfg,spec),before)
  def test_cli_preserves_living_controls_when_loading(self):
-  m=importlib.machinery.SourceFileLoader('living_cli_bridge',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_cli_bridge',ROOT/'dynwall')
   with tempfile.TemporaryDirectory() as td:
    path=Path(td)/'config.json';path.write_text(json.dumps({'background':'ridges','persistent_weather':False,'scene_customization':{'mist':.9}}))
    with patch.object(m,'CONFIG_FILE',path): cfg=m.load_config()
   self.assertFalse(cfg['persistent_weather']);self.assertEqual(cfg['scene_customization']['mist'],.9)
  def test_native_library_has_distinct_scene_materials_and_preview_phases(self):
-  m=importlib.machinery.SourceFileLoader('living_library_bridge',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_library_bridge',ROOT/'dynwall')
   library=m.build_scene_library()
   self.assertEqual(library['alpine']['day']['landscape']['style'],'alpine')
   self.assertEqual(library['ocean']['night']['landscape']['style'],'ocean')
   self.assertGreater(library['sky']['night']['stars'],0)
   self.assertNotEqual(library['ridges']['day']['gradient'],library['ridges']['night']['gradient'])
  def test_customization_changes_static_spec_without_mutating_source(self):
-  m=importlib.machinery.SourceFileLoader('living_static_bridge',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_static_bridge',ROOT/'dynwall')
   spec={'gradient':['#123456','#abcdef'],'landscape':{'style':'hills','height':.2,'mist':.5}}
   result=m.customize_fallback_spec(spec,{'horizon':.6,'terrain_scale':1.2,'mist':.8,'warmth':.5,'darkness':.3})
   self.assertNotEqual(result['gradient'],spec['gradient'])
@@ -41,7 +49,7 @@ class LivingBridgeTests(unittest.TestCase):
   self.assertEqual(spec['landscape']['height'],.2)
  def test_static_preview_scenarios_show_rain_snow_and_storm(self):
   from PIL import Image,ImageChops
-  m=importlib.machinery.SourceFileLoader('living_preview_image_bridge',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_preview_image_bridge',ROOT/'dynwall')
   plain=Image.new('RGB',(320,180),'#506070')
   for scenario in ('rain','snow','storm'):
    with self.subTest(scenario=scenario):
@@ -50,7 +58,7 @@ class LivingBridgeTests(unittest.TestCase):
   self.assertIs(m.preview_weather_image(plain,'day'),plain)
  def test_neutral_customization_preserves_builtin_materials(self):
   from datetime import datetime
-  m=importlib.machinery.SourceFileLoader('living_neutral_bridge',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_neutral_bridge',ROOT/'dynwall')
   for style in ('hills','alpine','dunes','ocean','none'):
    spec=m.fallback_spec(datetime(2026,10,31,12),'clear',style)
    result=m.customize_fallback_spec(spec,{})
@@ -58,13 +66,13 @@ class LivingBridgeTests(unittest.TestCase):
    self.assertAlmostEqual(result['landscape']['height'],spec['landscape']['height'])
    self.assertAlmostEqual(result['landscape']['mist'],spec['landscape']['mist'])
  def test_real_sample_pack_reaches_native_scene_catalog(self):
-  m=importlib.machinery.SourceFileLoader('living_pack_catalog_bridge',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_pack_catalog_bridge',ROOT/'dynwall')
   pack=m.build_pack_catalog()['woodland']
   self.assertTrue(Path(pack['foreground']).is_file())
   self.assertTrue(pack['foreground'].startswith(pack['root']+'/'))
   self.assertGreater(pack['horizon'],.1)
  def test_malformed_optional_landscape_retains_static_rendering(self):
-  m=importlib.machinery.SourceFileLoader('living_bad_landscape',str(ROOT/'dynwall')).load_module()
+  m=_load_source('living_bad_landscape',ROOT/'dynwall')
   for value in (None,[],'invalid'):
    with self.subTest(value=value):
     result=m.customize_fallback_spec({'gradient':['#123456','#abcdef'],'landscape':value},{})
