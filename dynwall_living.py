@@ -282,8 +282,10 @@ def load_pack(path):
         if current.is_symlink():
             raise ValueError('Foreground symlinks are not allowed')
     _regular(foreground, MAX_ASSET_BYTES)
+    image_dimensions = None
     try:
         with Image.open(foreground) as image:
+            image_dimensions = image.size
             if image.format != 'PNG' or image.width > 8192 or image.height > 8192 or image.width * image.height > MAX_PIXELS:
                 raise ValueError('Foreground image exceeds pack limits')
             if getattr(image, 'is_animated', False):
@@ -303,7 +305,7 @@ def load_pack(path):
         _regular(layer, MAX_ASSET_BYTES)
         try:
             with Image.open(layer) as item:
-                if item.format != 'PNG' or item.size != (image.width, image.height) or item.mode != 'RGBA' or getattr(item, 'is_animated', False):
+                if item.format != 'PNG' or item.size != image_dimensions or item.mode != 'RGBA' or getattr(item, 'is_animated', False):
                     raise ValueError('Depth layers must be static RGBA PNGs aligned with the foreground')
                 item.verify()
         except (OSError, SyntaxError, Image.DecompressionBombError) as error:
@@ -400,8 +402,8 @@ def import_pack(source, destination=None):
             for i, source in enumerate(pack['layers']):
                 folder = staging / 'layers'
                 folder.mkdir(exist_ok=True)
-                destination = folder / f'depth-{i}.png'
-                _write_private(destination, Path(source).read_bytes())
+                target_layer = folder / f'depth-{i}.png'
+                _write_private(target_layer, Path(source).read_bytes())
         _write_private(staging / 'manifest.json', (json.dumps(manifest, ensure_ascii=False, indent=2)+'\n').encode())
         load_pack(staging)
         os.rename(staging, target)
