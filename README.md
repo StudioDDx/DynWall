@@ -33,10 +33,17 @@ cd /home/rucaradio/dynwall
 ./install.sh
 ```
 
-Installing copies the GPU extension but does **not** enable it implicitly. It
-stops/disables the obsolete PNG player and retains the 30-minute static-sky timer.
-`./install.sh --no-render` stages files without rendering; `--enable-gpu` also
-attempts to enable an extension already discovered by GNOME.
+The installer now builds a **GNOME extension ZIP** using `gnome-extensions
+pack`, explicitly including `weather.glsl` and `valley-fog.glsl`. It checks
+the archive's required modules, shaders and UUID, then uses
+`gnome-extensions install --force` to install/update it. It does **not**
+enable the extension implicitly. The installer retires the obsolete PNG player
+and retains the 30-minute static-sky timer.
+
+`./install.sh --pack-only` creates `dist/dynwall@rucaradio.shell-extension.zip`
+without changing desktop files, extensions or services. `--no-render` installs
+without rendering a new fallback wallpaper; `--enable-gpu` attempts to enable
+an extension already discovered by the running GNOME session.
 
 **Log out and back in once after installing/updating extensions.** GNOME caches
 imported extension modules for the session; disabling/re-enabling TopWeather is
