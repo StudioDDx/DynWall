@@ -291,7 +291,7 @@ def customize_fallback_spec(spec, customization):
 def build_pack_catalog():
     from dynwall_living import list_packs
     return {pack["id"]: {key: str(pack[key]) if key in ("root", "foreground") else pack[key]
-        for key in ("root", "foreground", "horizon")} for pack in list_packs()}
+        for key in ("root", "foreground", "horizon", "layers") if key in pack} for pack in list_packs()}
 
 
 def build_scene_library():
