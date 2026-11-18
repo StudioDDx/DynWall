@@ -7,7 +7,7 @@ import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as LoginManager from 'resource:///org/gnome/shell/misc/loginManager.js';
-import {WeatherEffect} from './shader.js';
+import {WeatherEffect, ValleyFogEffect} from './shader.js';
 import {Lifetime, shouldAnimate, isInputChange, isDisplayAsleep} from './lifecycle.js';
 import {sanitizeScene, weatherUniforms, monitorLayout, withCelestial, advanceAdvection} from './state.js';
 import {resolvePresentation, transitionPresentation, sanitizePack, selectDocument, shouldResetEnvironment} from './presentation.js';
@@ -46,6 +46,7 @@ export default class DynwallExtension extends Extension {
         this._elapsed = 0;
         this._flow = [0, 0];
         this._effects = [];
+        this._fogEffects = [];
         this._current = null;
         this._suspended = false;
         this._displayAsleep = false;
@@ -60,6 +61,9 @@ export default class DynwallExtension extends Extension {
             const [ok, bytes] = this.dir.get_child('weather.glsl').load_contents(null);
             if (!ok) throw new Error('The weather shader could not be read');
             this._shader = decode(bytes);
+            const [fogOk, fogBytes] = this.dir.get_child('valley-fog.glsl').load_contents(null);
+            if (!fogOk) throw new Error('The valley fog shader could not be read');
+            this._fogShader = decode(fogBytes);
             const cache = GLib.get_user_cache_dir();
             this._scenePath = GLib.build_filenamev([cache, 'dynwall', 'scene.json']);
             this._weatherPath = GLib.build_filenamev([cache, 'topweather', 'current.json']);
@@ -259,8 +263,11 @@ export default class DynwallExtension extends Extension {
         const packKey = JSON.stringify([descriptor ?? null, this._livingDocument.scene_customization ?? null]);
         if (this._packKey !== packKey) {
             this._packKey = packKey;
-            this._packContent = this._loadPack(descriptor);
             this._packDescriptor = sanitizePack(descriptor);
+            this._packContent = this._loadPack(descriptor);
+            this._packLayers = this._packDescriptor?.layers?.map(path =>
+                this._loadPack({...this._packDescriptor, foreground: path})) ?? null;
+            if (this._packLayers?.some(content => !content)) this._packLayers = null;
             this._destroyActors();
         }
         this._target = this._scene ? {
@@ -350,12 +357,34 @@ export default class DynwallExtension extends Extension {
                 const horizon = Number.isFinite(controls.horizon) ? controls.horizon : .8;
                 const original = this._packDescriptor.horizon;
                 const shift = original + horizon - .8 - original * scale;
-                const foreground = new Clutter.Actor({name: 'Dynwall landscape pack', reactive: false,
-                    x: bounds.x, y: bounds.y + bounds.height * shift, width: bounds.width,
-                    height: bounds.height * scale, content: this._packContent,
-                    content_gravity: Clutter.ContentGravity.RESIZE_FILL, opacity: 0});
-                group.add_child(foreground);
-                foreground.ease({opacity: 255, duration: 600, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+                const addImage = (content, label) => {
+                    const image = new Clutter.Actor({name: label, reactive: false,
+                        x: bounds.x, y: bounds.y + bounds.height * shift, width: bounds.width,
+                        height: bounds.height * scale, content,
+                        content_gravity: Clutter.ContentGravity.RESIZE_FILL, opacity: 0});
+                    group.add_child(image);
+                    image.ease({opacity: 255, duration: 600, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+                };
+                if (this._packLayers?.length === 4) {
+                    for (let layer = 0; layer < 4; layer++) {
+                        addImage(this._packLayers[layer], 'Dynwall landscape depth ' + layer);
+                        if (layer === 3) break;
+                        for (const monitor of Main.layoutManager.monitors) {
+                            const color = new Cogl.Color();
+                            color.init_from_4f(1, 1, 1, 1);
+                            const actor = new Clutter.Actor({name: 'Dynwall valley fog', reactive: false,
+                                x: monitor.x, y: monitor.y, width: monitor.width,
+                                height: monitor.height, background_color: color});
+                            const effect = new ValleyFogEffect(this._fogShader);
+                            actor.add_effect(effect);
+                            group.add_child(actor);
+                            this._fogEffects.push({actor, effect, band: layer,
+                                view: [monitor.x - bounds.x, monitor.y - bounds.y, monitor.width, monitor.height]});
+                        }
+                    }
+                } else {
+                    addImage(this._packContent, 'Dynwall landscape pack');
+                }
             }
         } catch (error) {
             this._destroyActors();
@@ -388,6 +417,16 @@ export default class DynwallExtension extends Extension {
                 // of the slow interpolation used for changing weather and light.
                 u_landscape: this._target.u_landscape});
         }
+        if (this._fogEffects?.length && this._packLayers?.length === 4) {
+            const mist = this._livingDocument?.scene_customization?.mist ?? .5;
+            for (const {actor, effect, view, band} of this._fogEffects) {
+                if (!actor.visible) continue;
+                effect.update({u_canvas: [this._bounds.width, this._bounds.height], u_view: view,
+                    u_time: this._elapsed, u_flow: this._flow, u_band: band,
+                    u_daylight: this._current.u_daylight, u_coverage: this._current.u_coverage,
+                    u_rain: this._current.u_rain, u_mist: Math.max(0, Math.min(1, mist))});
+            }
+        }
         // CPU submission duration is not GPU utilization or GPU frame duration.
         this._frameCpuMs = (GLib.get_monotonic_time() - cpuStart) / 1000;
     }
@@ -399,6 +438,7 @@ export default class DynwallExtension extends Extension {
 
     _destroyActors() {
         this._effects = [];
+        this._fogEffects = [];
         this._group?.destroy();
         this._group = null;
     }
@@ -417,7 +457,7 @@ export default class DynwallExtension extends Extension {
         this._life = null;
         this._scene = this._target = this._current = this._shader = null;
         this._settings = this._login = null;
-        this._packContent = this._packDescriptor = this._living = this._season = this._policy = null;
+        this._packContent = this._packLayers = this._packDescriptor = this._living = this._season = this._policy = null;
         this._monitors = [];
     }
 }
