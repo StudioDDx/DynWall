@@ -5,11 +5,15 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENABLE_GPU=false
 RENDER=true
+PACK_ONLY=false
+UUID='dynwall@rucaradio'
 for arg in "$@"; do
     case "$arg" in
         --enable-gpu) ENABLE_GPU=true ;;
         --no-render) RENDER=false ;;
-        *) echo "usage: $0 [--enable-gpu] [--no-render]" >&2; exit 2 ;;
+        --pack-only) PACK_ONLY=true ;;
+        -h|--help) echo "usage: $0 [--enable-gpu] [--no-render] [--pack-only]"; exit 0 ;;
+        *) echo "usage: $0 [--enable-gpu] [--no-render] [--pack-only]" >&2; exit 2 ;;
     esac
 done
 
@@ -17,7 +21,8 @@ done
 for file in dynwall dynwall-settings dynwall-settings.desktop dynwall_weather.py .env.example systemd/dynwall.service \
     systemd/dynwall.timer systemd/dynwall-play.service extension/metadata.json \
     extension/extension.js extension/state.js extension/lifecycle.js \
-    extension/shader.js extension/uniforms.js extension/weather.glsl extension/valley-fog.glsl dynwall_ding_menu.py; do
+    extension/shader.js extension/uniforms.js extension/presentation.js extension/living.js \
+    extension/weather.glsl extension/valley-fog.glsl dynwall_ding_menu.py; do
     if [ ! -f "$REPO/$file" ]; then
         echo "error: incomplete Dynwall package: missing $file" >&2
         exit 1
@@ -31,12 +36,61 @@ if metadata.get('uuid') != 'dynwall@rucaradio' or '50' not in metadata.get('shel
     raise SystemExit('error: invalid Dynwall extension metadata')
 PY
 
-# Pre-flight: fail fast before installing anything if python deps are missing.
-if ! python3 -c "import PIL, requests" 2>/dev/null; then
-    echo "error: missing python deps — install them first, e.g.:" >&2
-    echo "  sudo apt install python3-pil python3-requests   # Debian/Ubuntu/Fedora (python3-pillow)" >&2
+# Package and validate before mutating the existing installation.
+command -v gnome-extensions >/dev/null || {
+    echo "error: gnome-extensions is required" >&2; exit 1;
+}
+TMP_BUNDLE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dynwall-extension.XXXXXXXX")"
+trap 'rm -rf -- "$TMP_BUNDLE_DIR"' EXIT
+gnome-extensions pack --force --out-dir "$TMP_BUNDLE_DIR" \
+    --extra-source=weather.glsl --extra-source=valley-fog.glsl \
+    "$REPO/extension"
+
+shopt -s nullglob
+BUNDLES=("$TMP_BUNDLE_DIR"/*.zip)
+shopt -u nullglob
+if [ "${#BUNDLES[@]}" -ne 1 ]; then
+    echo "error: expected exactly one GNOME extension ZIP" >&2
     exit 1
 fi
+BUNDLE="${BUNDLES[0]}"
+python3 - "$BUNDLE" "$UUID" <<'PY'
+import json, sys, zipfile
+required = {'metadata.json', 'extension.js', 'state.js', 'lifecycle.js',
+            'shader.js', 'uniforms.js', 'presentation.js', 'living.js',
+            'weather.glsl', 'valley-fog.glsl'}
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    names = archive.namelist()
+    if len(names) != len(set(names)) or not required.issubset(names):
+        raise SystemExit('error: incomplete or duplicate extension archive contents')
+    metadata = json.loads(archive.read('metadata.json'))
+    if metadata.get('uuid') != sys.argv[2] or archive.testzip() is not None:
+        raise SystemExit('error: invalid extension archive or UUID')
+PY
+
+if $PACK_ONLY; then
+    mkdir -p "$REPO/dist"
+    OUTPUT="$REPO/dist/${UUID}.shell-extension.zip"
+    cp -- "$BUNDLE" "$OUTPUT"
+    printf 'Packaged GNOME extension: %s\n' "$OUTPUT"
+    exit 0
+fi
+
+if ! python3 -c "import PIL, requests" 2>/dev/null; then
+    echo "error: missing python deps; install python3-pil and python3-requests" >&2
+    exit 1
+fi
+
+# Use GNOME's installer instead of copying directly into live extension sources.
+gnome-extensions install --force "$BUNDLE"
+EXTENSION_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$UUID"
+for file in metadata.json extension.js weather.glsl valley-fog.glsl; do
+    if [ ! -f "$EXTENSION_DIR/$file" ]; then
+        echo "error: installed extension is incomplete: $file" >&2
+        exit 1
+    fi
+done
+printf 'Installed GNOME extension at %s\n' "$EXTENSION_DIR"
 
 mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.config/dynwall" \
     "$HOME/.local/share/applications"
@@ -87,17 +141,13 @@ else
     systemctl --user disable --now dynwall.timer
 fi
 
-EXTENSION_DIR="$HOME/.local/share/gnome-shell/extensions/dynwall@rucaradio"
-mkdir -p "$EXTENSION_DIR"
-cp -a "$REPO/extension/." "$EXTENSION_DIR/"
-
 if $RENDER; then
     echo ">> rendering fallback wallpaper and publishing GPU state..."
     "$HOME/.local/bin/dynwall"
 fi
 
 if $ENABLE_GPU; then
-    if ! gnome-extensions enable dynwall@rucaradio; then
+    if ! gnome-extensions enable "$UUID"; then
         echo ">> GNOME has not discovered the new extension yet. Log out/in, then run:"
         echo "   gnome-extensions enable dynwall@rucaradio"
     fi
@@ -105,5 +155,6 @@ else
     echo ">> GPU extension installed but not enabled. After GNOME discovers it, run:"
     echo "   gnome-extensions enable dynwall@rucaradio"
 fi
+echo ">> Log out and back in to load updated GNOME extension JavaScript."
 echo ">> Install the updated TopWeather too; its next successful refresh supplies live weather."
 echo ">> Roll back animation instantly: gnome-extensions disable dynwall@rucaradio"
