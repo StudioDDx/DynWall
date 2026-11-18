@@ -53,7 +53,7 @@ export function sanitizePack(value) {
  const layers = value.layers;
  if (layers !== undefined && (!Array.isArray(layers) || layers.length !== 4 ||
      layers.some(path => typeof path !== 'string' || !path.startsWith(`${value.root}/`) ||
-       path.includes('\\\\') || path.includes('\\0') ||
+       path.includes('\\') || path.includes('\0') ||
        path.split('/').slice(1).some(part => !part || part === '.' || part === '..') ||
        !path.toLowerCase().endsWith('.png')) ||
      new Set(layers).size !== 4 || layers.includes(value.foreground))) return null;
