@@ -1,0 +1,25 @@
+name: Extension pack contract
+
+on:
+  push:
+    paths:
+      - install.sh
+      - test_install_pack.py
+      - extension/**
+      - .github/workflows/extension-pack.yml
+  pull_request:
+    paths:
+      - install.sh
+      - test_install_pack.py
+      - extension/**
+      - .github/workflows/extension-pack.yml
+
+jobs:
+  verify-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Bash syntax
+        run: bash -n install.sh
+      - name: Verify GNOME source packaging
+        run: python3 -m unittest -v test_install_pack

@@ -42,9 +42,20 @@ command -v gnome-extensions >/dev/null || {
 }
 TMP_BUNDLE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dynwall-extension.XXXXXXXX")"
 trap 'rm -rf -- "$TMP_BUNDLE_DIR"' EXIT
+# GNOME includes only extension.js, metadata.json and a few optional
+# standard files by default. Relative JS imports and GLSL sources MUST each
+# be passed explicitly, or the resulting archive is missing runtime modules.
+EXTRA_SOURCES=()
+shopt -s nullglob
+for source in "$REPO"/extension/*.js "$REPO"/extension/*.glsl; do
+    case "${source##*/}" in
+        extension.js|prefs.js) continue ;;
+    esac
+    EXTRA_SOURCES+=("--extra-source=${source##*/}")
+done
+shopt -u nullglob
 gnome-extensions pack --force --out-dir "$TMP_BUNDLE_DIR" \
-    --extra-source=weather.glsl --extra-source=valley-fog.glsl \
-    "$REPO/extension"
+    "${EXTRA_SOURCES[@]}" "$REPO/extension"
 
 shopt -s nullglob
 BUNDLES=("$TMP_BUNDLE_DIR"/*.zip)
@@ -54,15 +65,26 @@ if [ "${#BUNDLES[@]}" -ne 1 ]; then
     exit 1
 fi
 BUNDLE="${BUNDLES[0]}"
-python3 - "$BUNDLE" "$UUID" <<'PY'
+python3 - "$BUNDLE" "$UUID" "$REPO/extension" <<'PY'
 import json, sys, zipfile
-required = {'metadata.json', 'extension.js', 'state.js', 'lifecycle.js',
-            'shader.js', 'uniforms.js', 'presentation.js', 'living.js',
-            'weather.glsl', 'valley-fog.glsl'}
+from collections import Counter
+from pathlib import Path
+
+source = Path(sys.argv[3])
+required = {'metadata.json', 'extension.js'}
+required.update(path.name for pattern in ('*.js', '*.glsl')
+                for path in source.glob(pattern) if path.is_file())
 with zipfile.ZipFile(sys.argv[1]) as archive:
     names = archive.namelist()
-    if len(names) != len(set(names)) or not required.issubset(names):
-        raise SystemExit('error: incomplete or duplicate extension archive contents')
+    duplicate = sorted(name for name, count in Counter(names).items() if count > 1)
+    missing = sorted(required.difference(names))
+    if missing or duplicate:
+        if missing:
+            print('error: extension ZIP missing: ' + ', '.join(missing), file=sys.stderr)
+        if duplicate:
+            print('error: extension ZIP has duplicate entries: ' + ', '.join(duplicate),
+                  file=sys.stderr)
+        raise SystemExit(1)
     metadata = json.loads(archive.read('metadata.json'))
     if metadata.get('uuid') != sys.argv[2] or archive.testzip() is not None:
         raise SystemExit('error: invalid extension archive or UUID')
