@@ -73,3 +73,35 @@ pixels total. Archives contain at most eight entries and 32 MiB plus manifest
 space when expanded. Absolute paths, parent traversal, symlinks, corrupt images,
 and unsupported manifests are rejected before publication. Missing or invalid
 packs are omitted from the settings catalog and renderers retain built-in terrain.
+
+## Layered packs (optional, backwards compatible)
+
+A v1 manifest may additionally specify `"layers"` as exactly four distinct
+relative RGBA PNG paths in far-to-near order. All images must have the same
+pixel dimensions as `foreground.png`. The layers replace the single foreground
+only in the native animated renderer; static Pillow fallback uses the supplied
+composite `foreground.png`. PNGs are individually limited to 32 MiB; combined
+artwork is limited to 96 MiB. Existing one-image packs work unchanged.
+
+The native renderer places three independent transparent GPU valley-fog passes
+between the four foreground layers. The noise field uses virtual desktop
+coordinates, animated wind flow and live TopWeather precipitation/cloud cover.
+The existing mist customization controls its strength. An absent or invalid
+set of layers safely falls back to the composite image.
+
+Layer assets are retained on folder/ZIP import and export. The file count remains
+at most eight entries (manifest, composite, four depth images, and optional dirs).
+
+Example:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "smokies-winter",
+  "name": "Smoky Mountains — Living Winter",
+  "horizon": 0.72,
+  "foreground": "foreground.png",
+  "layers": ["layers/mountains-far.png", "layers/mountains-mid.png",
+             "layers/forest-near.png", "layers/creek-meadow.png"]
+}
+```
