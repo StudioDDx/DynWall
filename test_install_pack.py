@@ -20,7 +20,7 @@ class ServiceInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         source = script.read_text()
         self.assertEqual(source.count("<<'PY'"), 1)
-        body = source.split("<<'PY'\\n", 1)[1].split("\\nPY\\n", 1)[0]
+        body = source.split("<<'PY'", 1)[1].split(chr(10) + "PY" + chr(10), 1)[0]
         ast.parse(body)
 
     def test_service_uses_native_slideshow(self):
