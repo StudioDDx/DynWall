@@ -1,7 +1,9 @@
 [Unit]
-Description=Refresh Dynwall static sky and GPU scene state
+Description=DynWall animated wallpaper refresh (native GNOME slideshow)
+After=graphical-session.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/dynwall
+ExecStart=%h/.local/bin/dynwall --play
 EnvironmentFile=-%h/.config/dynwall/env
+TimeoutStartSec=600
