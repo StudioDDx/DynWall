@@ -1,14 +1,14 @@
 """Tests for opt-in cinematic wallpaper animation, independent of a GNOME session."""
 import importlib.machinery
 import importlib.util
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 from PIL import Image, ImageChops
 
-from dynwall_cinematic import build_frames
+from dynwall_cinematic import build_frames, _base_image, _sun_altitude
 
 ROOT = Path(__file__).resolve().parent
 
@@ -34,6 +34,26 @@ class CinematicTests(unittest.TestCase):
             with Image.open(files[0]) as first, Image.open(files[2]) as other:
                 self.assertEqual(first.size, (180, 100))
                 self.assertIsNotNone(ImageChops.difference(first, other).getbbox())
+
+    def test_solar_elevation_tracks_real_clock_and_location(self):
+        coordinates = {"latitude": 35.95, "longitude": -83.92}
+        day = _sun_altitude(datetime(2026, 6, 21, 16, tzinfo=timezone.utc), coordinates)
+        night = _sun_altitude(datetime(2026, 6, 21, 4, tzinfo=timezone.utc), coordinates)
+        self.assertGreater(day, 55)
+        self.assertLess(night, -10)
+
+    def test_daylight_and_night_ambient_grades_are_distinct(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "source.png"
+            Image.new("RGB", (60, 40), (190, 145, 95)).save(source)
+            location = {"latitude": 35.95, "longitude": -83.92,
+                        "current": {"cloudCover": 10}}
+            day = _base_image(source, (60, 40),
+                              datetime(2026, 6, 21, 16, tzinfo=timezone.utc), location)
+            night = _base_image(source, (60, 40),
+                                datetime(2026, 6, 21, 4, tzinfo=timezone.utc), location)
+            self.assertGreater(sum(day.getpixel((30, 20))),
+                               sum(night.getpixel((30, 20))))
 
     def test_bad_source_or_count_does_not_publish_frames(self):
         with tempfile.TemporaryDirectory() as td:

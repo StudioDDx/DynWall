@@ -247,7 +247,7 @@ class SettingsTests(unittest.TestCase):
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-options"],
         ])
 
-    def test_master_on_restores_cached_wallpaper_and_services(self):
+    def test_master_on_preserves_current_slideshow_until_service_refresh(self):
         calls = []
         def run(cmd, **kwargs):
             calls.append(cmd)
@@ -259,12 +259,8 @@ class SettingsTests(unittest.TestCase):
                  patch.object(self.settings, "WALLPAPER_PATH", wall):
                 ok, errors = self.settings.sync_dynwall_state(True)
         self.assertTrue(ok, errors)
-        uri = wall.resolve().as_uri()
         self.assertEqual(calls, [
             ["systemctl", "--user", "enable", "--now", "dynwall.timer"],
-            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
-            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri],
-            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"],
         ])
 
     def test_save_publishes_complete_private_config_atomically(self):

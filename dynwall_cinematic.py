@@ -13,22 +13,70 @@ import random
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
-def _base_image(source: Path, size: tuple[int, int], now: datetime) -> Image.Image:
+def _sun_altitude(now: datetime, weather: dict | None) -> float | None:
+    """Approximate solar elevation from observed location and local time.
+
+    No sunrise/sunset clock-hour assumptions: UTC offset, longitude, latitude
+    and day of year determine the lighting envelope.
+    """
+    weather = weather if isinstance(weather, dict) else {}
+    lat, lon = weather.get("latitude"), weather.get("longitude")
+    if any(type(v) not in (int, float) or not math.isfinite(v)
+           for v in (lat, lon)) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    from datetime import timezone
+    local = now.astimezone() if now.tzinfo is None else now
+    utc = local.astimezone(timezone.utc)
+    day = utc.timetuple().tm_yday
+    h = utc.hour + utc.minute / 60 + utc.second / 3600
+    gamma = 2 * math.pi / 365 * (day - 1 + (h - 12) / 24)
+    eqtime = 229.18 * (0.000075 + 0.001868 * math.cos(gamma)
+                       - 0.032077 * math.sin(gamma) - 0.014615 * math.cos(2*gamma)
+                       - 0.040849 * math.sin(2*gamma))
+    decl = (0.006918 - 0.399912 * math.cos(gamma) + 0.070257 * math.sin(gamma)
+            - 0.006758 * math.cos(2*gamma) + 0.000907 * math.sin(2*gamma)
+            - 0.002697 * math.cos(3*gamma) + 0.00148 * math.sin(3*gamma))
+    minutes = h * 60 + eqtime + 4 * lon
+    hour_angle = math.radians((minutes % 1440) / 4 - 180)
+    latitude = math.radians(lat)
+    cosine = math.sin(latitude) * math.sin(decl) + math.cos(latitude) * math.cos(decl) * math.cos(hour_angle)
+    return math.degrees(math.asin(max(-1, min(1, cosine))))
+
+
+def _base_image(source: Path, size: tuple[int, int], now: datetime,
+                weather: dict | None = None) -> Image.Image:
     with Image.open(source) as image:
         base = ImageOps.fit(image.convert("RGB"), size, Image.Resampling.LANCZOS,
                             centering=(0.5, 0.48))
-    hour = now.hour + now.minute / 60
-    # Preserve texture and retain warm cabin details through nighttime.
-    if hour < 5 or hour >= 21:
-        factor = 0.40
-    elif hour < 7:
-        factor = 0.40 + (hour - 5) * 0.23
-    elif hour < 18:
-        factor = 0.95
-    else:
-        factor = 0.95 - min(3, hour - 18) * 0.18
-    if factor != 1:
-        base = ImageEnhance.Brightness(base).enhance(factor)
+    weather = weather if isinstance(weather, dict) else {}
+    current = weather.get("current", {})
+    current = current if isinstance(current, dict) else {}
+    altitude = _sun_altitude(now, weather)
+    # Fixed-phase fallback is used only when TopWeather has no coordinates.
+    if altitude is None:
+        hour = now.hour + now.minute / 60
+        if 7 <= hour < 18:
+            altitude = 35.0
+        elif 6 <= hour < 7 or 18 <= hour < 19:
+            altitude = -2.0
+        else:
+            altitude = -25.0
+    daylight = max(0.0, min(1.0, (altitude + 9) / 35))
+    cloud_cover = current.get("cloudCover")
+    clouds = cloud_cover / 100 if type(cloud_cover) in (int, float) and math.isfinite(cloud_cover) and 0 <= cloud_cover <= 100 else 0
+    daylight *= 1 - 0.28 * clouds
+    dusk = max(0.0, 1 - abs(altitude - 1.0) / 17.0)
+    # The source painting has a fixed sunset position. These color grades
+    # change the ambience, NOT sun placement, shadow geometry or season.
+    brightness = 0.24 + 0.76 * daylight
+    base = ImageEnhance.Brightness(base).enhance(brightness)
+    if daylight < 0.55:
+        night = 1 - daylight / 0.55
+        overlay = Image.new("RGB", size, (30, 53, 98))
+        base = Image.blend(base, overlay, 0.28 * night)
+    elif dusk > 0:
+        amber = Image.new("RGB", size, (192, 104, 69))
+        base = Image.blend(base, amber, 0.065 * dusk)
     return base
 
 
@@ -60,7 +108,7 @@ def build_frames(source: Path, target: Path, size: tuple[int, int], count: int,
     if min(size) < 1 or max(size) > 15360:
         raise ValueError("invalid canvas size")
     now = clock or datetime.now()
-    base = _base_image(source, size, now)
+    base = _base_image(source, size, now, weather)
     fog = _fog_texture(size)
     weather = weather if isinstance(weather, dict) else {}
     current = weather.get("current", {})
