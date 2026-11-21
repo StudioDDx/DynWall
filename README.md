@@ -32,6 +32,39 @@ systemctl --user disable --now dynwall.timer # pause scheduled refreshes
 
 **Performance:** slides require PNG storage and periodic rendering; the background compositor handles playback. Avoid unnecessarily high resolution or frame count if memory or render latency is a concern.
 
+## Cinematic Smokies landscape (opt-in artwork)
+
+The service can animate a real illustrated Smoky Mountains panorama, avoiding the
+old flat procedural tree/cabin scene. The authored original `Smokies-Cinematic-DynWall-Pack.zip`
+is distributed separately from the repository; **download it from the conversation
+artifact first**. From the repository:
+
+```bash
+git pull origin main
+./install.sh --no-render
+bash ./install-cinematic.sh ~/Downloads/Smokies-Cinematic-DynWall-Pack.zip
+```
+
+The import validates the normal DynWall v1 pack manifest, stores the artwork under
+`~/.local/share/dynwall/packs/smokies-cinematic`, selects it in the existing
+config and starts the service. Existing configured wallpaper dimensions are kept;
+without any configured dimensions the import selects 1920x1080.
+
+For this specific pack, the service renders gently animated fog over the panoramic
+painting. The fog follows the 24-frame default slideshow loop (36 seconds at
+1.5s per frame), and changes strength with recent TopWeather cloud cover.
+All frames are generated before publication; no GNOME Shell actor, shader or
+per-frame `gsettings` call is needed. Sunrise-style lighting is baked into the
+artwork, with simple clock-based day/night brightness grading; it is not yet a
+fully synthesized photorealistic day/night/seasonal cycle.
+
+To revert, choose a different Landscape in DynWall Settings or clear the
+`landscape_pack` field in `~/.config/dynwall/config.json`, then run:
+
+```bash
+systemctl --user start dynwall.service
+```
+
 ## How weather drives the sky
 
 TopWeather exports its last successful observation atomically to:
