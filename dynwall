@@ -883,8 +883,16 @@ def render_service_slideshow(spec, cfg):
     generation = slideshow_root / ("gen-" + uuid.uuid4().hex)
     count = int(clamp(cfg.get("frames", 24), 1, 120))
     try:
-        frames = render_frames(spec, count, cfg["mesh_enabled"],
-                               cfg["landscape_enabled"], output_dir=generation)
+        if cfg.get("landscape_pack") == "smokies-cinematic" and cfg.get("landscape_enabled", True):
+            from dynwall_living import load_pack, pack_directory
+            from dynwall_cinematic import build_frames
+            # Validate the same installed artwork and manifest as the pack importer.
+            pack = load_pack(pack_directory("smokies-cinematic"))
+            frames = build_frames(Path(pack["foreground"]), generation, (W, H),
+                                  count, weather=load_weather())
+        else:
+            frames = render_frames(spec, count, cfg["mesh_enabled"],
+                                   cfg["landscape_enabled"], output_dir=generation)
         slide_path = write_slideshow(generation / "slideshow.xml",
                                      frames, cfg["frame_seconds"])
         set_wallpaper(slide_path)
