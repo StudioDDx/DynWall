@@ -1,25 +1,41 @@
-name: Extension pack contract
+name: Service wallpaper rendering
 
 on:
   push:
     paths:
+      - dynwall
+      - dynwall_cinematic.py
+      - dynwall_slideshow.py
+      - dynwall_living.py
       - install.sh
+      - install-cinematic.sh
       - test_install_pack.py
-      - extension/**
+      - test_service_slideshow.py
+      - test_cinematic.py
       - .github/workflows/extension-pack.yml
   pull_request:
     paths:
+      - dynwall
+      - dynwall_cinematic.py
+      - dynwall_slideshow.py
+      - dynwall_living.py
       - install.sh
+      - install-cinematic.sh
       - test_install_pack.py
-      - extension/**
+      - test_service_slideshow.py
+      - test_cinematic.py
       - .github/workflows/extension-pack.yml
 
 jobs:
-  verify-package:
+  service-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check Bash syntax
-        run: bash -n install.sh
-      - name: Verify GNOME source packaging
-        run: python3 -m unittest -v test_install_pack
+      - name: Install Python renderer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil python3-requests
+      - name: Validate installer shell syntax
+        run: bash -n install.sh install-cinematic.sh
+      - name: Exercise service playback and cinematic renderer
+        run: /usr/bin/python3 -m unittest -v test_install_pack test_service_slideshow test_cinematic
