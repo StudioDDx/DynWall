@@ -881,9 +881,11 @@ def render_service_slideshow(spec, cfg):
     slideshow_root = CACHE_DIR / "slideshow"
     slideshow_root.mkdir(parents=True, exist_ok=True)
     generation = slideshow_root / ("gen-" + uuid.uuid4().hex)
-    count = int(clamp(cfg.get("frames", 24), 1, 120))
+    is_cinematic = (cfg.get("landscape_pack") == "smokies-cinematic"
+                    and cfg.get("landscape_enabled", True))
+    count = int(clamp(cfg.get("frames", 24), 1, 120)) if cfg.get("allow_animation", True) else 1
     try:
-        if cfg.get("landscape_pack") == "smokies-cinematic" and cfg.get("landscape_enabled", True):
+        if is_cinematic:
             from dynwall_living import load_pack, pack_directory
             from dynwall_cinematic import build_frames
             # Validate the same installed artwork and manifest as the pack importer.
@@ -894,7 +896,8 @@ def render_service_slideshow(spec, cfg):
             frames = render_frames(spec, count, cfg["mesh_enabled"],
                                    cfg["landscape_enabled"], output_dir=generation)
         slide_path = write_slideshow(generation / "slideshow.xml",
-                                     frames, cfg["frame_seconds"])
+                                     frames, cfg["frame_seconds"],
+                                     smooth=is_cinematic and count > 1)
         set_wallpaper(slide_path)
     except Exception:
         shutil.rmtree(generation, ignore_errors=True)
@@ -991,7 +994,9 @@ def main(argv=None):
     spec = customize_fallback_spec(spec, cfg.get("scene_customization"))
     spec["_living"] = cfg
     print(f"title={spec.get('title')!r} mood={spec.get('mood')} gradient={spec['gradient']} weather={weather}")
-    if args.play and cfg["allow_animation"]:
+    if args.play and (cfg["allow_animation"] or
+                      (cfg.get("landscape_pack") == "smokies-cinematic"
+                       and cfg.get("landscape_enabled", True))):
         render_service_slideshow(spec, cfg)
     elif hasattr(args, "animate"):
         if not cfg["allow_animation"]:
