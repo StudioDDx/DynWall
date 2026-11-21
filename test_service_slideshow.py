@@ -44,6 +44,21 @@ class SlideshowTests(unittest.TestCase):
             self.assertEqual([x.findtext("duration") for x in xml.findall("static")],
                              ["1.500", "1.500"])
 
+    def test_smooth_slides_interpolate_and_wrap_without_jump(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            frames = [root / "first.png", root / "second.png"]
+            for frame in frames:
+                Image.new("RGB", (8, 8), "#556677").save(frame)
+            xml = ET.parse(write_slideshow(root / "smooth.xml", frames, 1.5,
+                                           smooth=True)).getroot()
+            transitions = xml.findall("transition")
+            self.assertEqual(len(transitions), 2)
+            self.assertEqual([t.findtext("duration") for t in transitions],
+                             ["1.500", "1.500"])
+            self.assertEqual(transitions[-1].findtext("to"), str(frames[0].resolve()))
+            self.assertTrue(all(s.findtext("duration") == "0.100" for s in xml.findall("static")))
+
     def test_render_mode_uses_new_generation_uri(self):
         cli = load_cli()
         with tempfile.TemporaryDirectory() as td:
