@@ -362,12 +362,11 @@ class SettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, \
              patch.object(settings, "CONFIG_DIR", td), \
              patch.object(settings, "CONFIG_PATH", str(Path(td) / "config.json")), \
-             patch.object(settings, "sync_play_service", return_value=True), \
              patch.object(settings, "sync_dynwall_state", return_value=(True, [])), \
              patch.object(settings.subprocess, "Popen", side_effect=lambda cmd, **kw: commands.append(cmd)), \
              patch.object(settings.GLib, "timeout_add_seconds", return_value=1):
             settings.SettingsWindow._on_save_and_regen(window, button)
-        self.assertEqual(commands, [[settings.DYNWALL_CMD]])
+        self.assertEqual(commands, [["systemctl", "--user", "start", "--no-block", "dynwall.service"]])
 
 
 class InstallerTests(unittest.TestCase):
