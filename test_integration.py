@@ -384,13 +384,13 @@ class SettingsTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
-    def test_missing_uniform_module_fails_before_mutating_installation(self):
+    def test_missing_renderer_module_fails_before_mutating_installation(self):
         with tempfile.TemporaryDirectory() as td:
             home = Path(td) / 'home'
             home.mkdir()
             package = Path(td) / 'package'
             shutil.copytree(ROOT, package, ignore=shutil.ignore_patterns('.git', '__pycache__'))
-            (package / 'extension/uniforms.js').unlink()
+            (package / 'dynwall_slideshow.py').unlink()
             bindir = Path(td) / 'bin'
             bindir.mkdir()
             for name in ('systemctl', 'gnome-extensions', 'update-desktop-database'):
@@ -400,7 +400,7 @@ class InstallerTests(unittest.TestCase):
             result = subprocess.run(['bash', str(package / 'install.sh'), '--no-render'],
                                     env=dict(os.environ, HOME=str(home), PATH=f'{bindir}:/usr/bin:/bin'),
                                     capture_output=True, text=True, timeout=10)
-            self.assertNotEqual(result.returncode, 0, 'installer accepted a missing runtime module')
+            self.assertNotEqual(result.returncode, 0, 'installer accepted a missing slideshow module')
             self.assertFalse((home / '.local').exists())
 
     def test_incomplete_package_fails_before_mutating_installation(self):
@@ -416,7 +416,7 @@ class InstallerTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((home / ".local").exists(), "broken package mutated installation")
 
-    def test_install_stages_gpu_extension_but_does_not_enable_it_implicitly(self):
+    def test_install_activates_service_without_shell_extension(self):
         with tempfile.TemporaryDirectory() as td:
             home = Path(td)
             bindir = home / "bin"
@@ -431,10 +431,12 @@ class InstallerTests(unittest.TestCase):
                          PATH=f"{bindir}:/usr/bin:/bin"),
                 capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
-            installed = home / ".local/share/gnome-shell/extensions/dynwall@rucaradio"
-            self.assertTrue((installed / "metadata.json").exists())
+            self.assertTrue((home / ".config/systemd/user/dynwall.service").exists())
+            self.assertTrue((home / ".local/bin/dynwall").is_symlink())
             commands = log.read_text()
             self.assertIn("systemctl --user disable --now dynwall-play.service", commands)
+            self.assertIn("systemctl --user enable --now dynwall.timer", commands)
+            self.assertIn("gnome-extensions disable dynwall@rucaradio", commands)
             self.assertNotIn("gnome-extensions enable", commands)
             self.assertFalse((home / ".cache/dynwall/wall.png").exists())
 
