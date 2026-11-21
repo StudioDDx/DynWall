@@ -50,13 +50,23 @@ The import validates the normal DynWall v1 pack manifest, stores the artwork und
 config and starts the service. Existing configured wallpaper dimensions are kept;
 without any configured dimensions the import selects 1920x1080.
 
-For this specific pack, the service renders gently animated fog over the panoramic
-painting. The fog follows the 24-frame default slideshow loop (36 seconds at
-1.5s per frame), and changes strength with recent TopWeather cloud cover.
-All frames are generated before publication; no GNOME Shell actor, shader or
-per-frame `gsettings` call is needed. Sunrise-style lighting is baked into the
-artwork, with simple clock-based day/night brightness grading; it is not yet a
-fully synthesized photorealistic day/night/seasonal cycle.
+For this pack, GNOME composites each adjacent fog frame with a native
+`<transition>` fade rather than pausing for 1.5 seconds on every image.
+The last frame fades back to the first for a seamless loop; there is no
+continuous high-FPS Python frame renderer and no Shell extension. Frame generation
+still occurs once per service refresh, and GNOME handles the smooth interpolation.
+
+Settings Save keeps the active slideshow visible until the service has rendered
+and published its replacement. Turning animation off leaves the selected
+cinematic artwork active as a single static frame instead of reverting to
+procedural terrain.
+
+When TopWeather provides latitude/longitude, approximate solar elevation
+controls cinematic ambient brightness and a restrained evening/night color
+grade. Cloud cover gently dims the image. Missing coordinates use coarse
+clock-hour fallback. **The sun, cabin lights and shadows remain baked into
+the original artwork**; this is a color/illumination approximation, not
+photorealistic dynamic scene relighting or a day/night sky replacement.
 
 To revert, choose a different Landscape in DynWall Settings or clear the
 `landscape_pack` field in `~/.config/dynwall/config.json`, then run:
