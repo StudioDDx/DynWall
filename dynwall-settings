@@ -165,14 +165,10 @@ def sync_dynwall_state(enabled: bool):
     commands = [
         ["systemctl", "--user", "enable" if enabled else "disable", "--now", "dynwall.timer"],
     ]
-    if enabled and WALLPAPER_PATH.is_file():
-        uri = WALLPAPER_PATH.resolve().as_uri()
-        commands.extend([
-            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
-            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri],
-            ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"],
-        ])
-    elif not enabled:
+    # When enabled, never restore the stale PNG: the oneshot service atomically
+    # publishes the next slideshow after rendering all of its frames.
+    # Changing the URI here caused every Save to flash back to built-in artwork.
+    if not enabled:
         commands.extend([
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri-dark"],
