@@ -885,7 +885,7 @@ def render_service_slideshow(spec, cfg):
     try:
         frames = render_frames(spec, count, cfg["mesh_enabled"],
                                cfg["landscape_enabled"], output_dir=generation)
-        slide_path = write_slideshow(slideshow_root / "current.xml",
+        slide_path = write_slideshow(generation / "slideshow.xml",
                                      frames, cfg["frame_seconds"])
         set_wallpaper(slide_path)
     except Exception:
