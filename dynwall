@@ -834,18 +834,31 @@ def render_still(spec, mesh_enabled: bool = True, landscape_enabled: bool = True
     print(f"wrote {OUT_PNG}")
 
 
-def render_frames(spec, n: int, mesh_enabled: bool = True, landscape_enabled: bool = True):
+def render_frames(spec, n: int, mesh_enabled: bool = True, landscape_enabled: bool = True,
+                  output_dir: Path | None = None):
     scene = build_scene(spec, mesh_enabled, landscape_enabled)
-    # Render into a staging dir, then atomically swap so --play never sees
-    # half-written or missing frames.
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=False)
+        for i in range(n):
+            frame = composite_selected_pack(
+                compose(scene, i / n, frame_seed=i), spec.get("_living", {}))
+            frame.save(output_dir / f"f{i:03d}.png", "PNG")
+        return sorted(output_dir.glob("f*.png"))
+
+    # Legacy frame export contract used by --animate.
     staging = FRAMES_DIR.with_name("frames.new")
     if staging.exists():
         for old in staging.glob("f*.png"):
             old.unlink()
     staging.mkdir(parents=True, exist_ok=True)
     for i in range(n):
-        composite_selected_pack(compose(scene, i / n, frame_seed=i), spec.get("_living", {})).save(staging / f"f{i:03d}.png", "PNG")
+        composite_selected_pack(compose(scene, i / n, frame_seed=i),
+                                spec.get("_living", {})).save(staging / f"f{i:03d}.png", "PNG")
     old_dir = FRAMES_DIR.with_name("frames.old")
+    if old_dir.exists():
+        for old in old_dir.glob("f*.png"):
+            old.unlink()
+        old_dir.rmdir()
     if FRAMES_DIR.exists():
         FRAMES_DIR.rename(old_dir)
     staging.rename(FRAMES_DIR)
@@ -854,26 +867,47 @@ def render_frames(spec, n: int, mesh_enabled: bool = True, landscape_enabled: bo
             old.unlink()
         old_dir.rmdir()
     print(f"wrote {n} frames to {FRAMES_DIR}")
+    return sorted(FRAMES_DIR.glob("f*.png"))
 
 
-def play(frame_seconds: float = FRAME_SECONDS):
-    """Legacy playback is intentionally disabled; kept as a migration guard."""
-    raise RuntimeError("Use gnome-extensions enable dynwall@rucaradio; picture-uri playback is disabled")
+def render_service_slideshow(spec, cfg):
+    """Render a generation, then switch GNOME to the native slideshow atomically.
+
+    Older generation directories remain available while GNOME switches playlists.
+    """
+    import shutil
+    import uuid
+    from dynwall_slideshow import write_slideshow
+    slideshow_root = CACHE_DIR / "slideshow"
+    slideshow_root.mkdir(parents=True, exist_ok=True)
+    generation = slideshow_root / ("gen-" + uuid.uuid4().hex)
+    count = int(clamp(cfg.get("frames", 24), 1, 120))
+    try:
+        frames = render_frames(spec, count, cfg["mesh_enabled"],
+                               cfg["landscape_enabled"], output_dir=generation)
+        slide_path = write_slideshow(generation / "slideshow.xml",
+                                     frames, cfg["frame_seconds"])
+        set_wallpaper(slide_path)
+    except Exception:
+        shutil.rmtree(generation, ignore_errors=True)
+        raise
+    # Preserve the current and immediately preceding generations across swaps.
+    old = sorted((p for p in slideshow_root.glob("gen-*") if p.is_dir()),
+                 key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in old[2:]:
+        shutil.rmtree(stale, ignore_errors=True)
+    print(f"published native slideshow with {count} frames at {slide_path}")
 
 
 def main(argv=None):
     global W, H, FRAME_SECONDS
-    parser = argparse.ArgumentParser(description="Time-aware sky with native GPU weather")
+    parser = argparse.ArgumentParser(description="Time-aware wallpaper via systemd and GNOME native slideshow")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--preview-output", type=Path, metavar="PATH", help="Render the current offline preview to a file without changing wallpaper")
     modes.add_argument("--refresh-scene", action="store_true", help="Publish GPU state without network or changing wallpaper")
     modes.add_argument("--animate", nargs="?", const=None, default=argparse.SUPPRESS, type=int, metavar="N", help="Export legacy PNG frames (not desktop playback)")
-    modes.add_argument("--play", action="store_true", help="Removed: use the native GNOME extension")
+    modes.add_argument("--play", action="store_true", help="Regenerate and activate native GNOME slideshow")
     args = parser.parse_args(argv)
-    if args.play:
-        print("Legacy picture-uri playback is disabled to avoid desktop stalls. Use: "
-              "gnome-extensions enable dynwall@rucaradio", file=sys.stderr)
-        return 2
     cfg = load_config()
     if not cfg["enabled"] and not args.preview_output:
         print("Dynwall is disabled in settings")
@@ -949,7 +983,9 @@ def main(argv=None):
     spec = customize_fallback_spec(spec, cfg.get("scene_customization"))
     spec["_living"] = cfg
     print(f"title={spec.get('title')!r} mood={spec.get('mood')} gradient={spec['gradient']} weather={weather}")
-    if hasattr(args, "animate"):
+    if args.play and cfg["allow_animation"]:
+        render_service_slideshow(spec, cfg)
+    elif hasattr(args, "animate"):
         if not cfg["allow_animation"]:
             print("animation disabled in config (allow_animation=false)", file=sys.stderr)
             return 1

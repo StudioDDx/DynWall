@@ -178,13 +178,11 @@ class CliTests(unittest.TestCase):
             self.assertFalse((cache / "dynwall/wall.png").exists())
             self.assertNotIn("gsettings", result.stderr)
 
-    def test_legacy_player_exits_with_migration_instructions(self):
-        with tempfile.TemporaryDirectory() as td:
-            result = subprocess.run([sys.executable, str(ROOT / "dynwall"), "--play"],
-                                    env=dict(os.environ, HOME=td), capture_output=True,
-                                    text=True, timeout=5)
-            self.assertEqual(result.returncode, 2)
-            self.assertIn("gnome-extensions enable dynwall@rucaradio", result.stderr)
+    def test_service_player_respects_disabled_master_switch(self):
+        module = _load_source("dynwall_play_disabled_test", ROOT / "dynwall")
+        with patch.object(module, "load_config", return_value=dict(module.DEFAULTS, enabled=False)), \
+             patch.object(module, "set_wallpaper", side_effect=AssertionError("desktop modified")):
+            self.assertEqual(module.main(["--play"]), 0)
 
 
 class SettingsTests(unittest.TestCase):
@@ -244,7 +242,6 @@ class SettingsTests(unittest.TestCase):
         self.assertTrue(ok, errors)
         self.assertEqual(calls, [
             ["systemctl", "--user", "disable", "--now", "dynwall.timer"],
-            ["gnome-extensions", "disable", "dynwall@rucaradio"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri-dark"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-options"],
@@ -265,7 +262,6 @@ class SettingsTests(unittest.TestCase):
         uri = wall.resolve().as_uri()
         self.assertEqual(calls, [
             ["systemctl", "--user", "enable", "--now", "dynwall.timer"],
-            ["gnome-extensions", "enable", "dynwall@rucaradio"],
             ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
             ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri],
             ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"],
@@ -328,15 +324,6 @@ class SettingsTests(unittest.TestCase):
                 self.assertEqual(path.read_text(), original)
                 self.assertEqual(list(Path(td).iterdir()), [path])
 
-    def test_animation_save_never_enables_legacy_player(self):
-        calls = []
-        def run(cmd, **kwargs):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0)
-        with patch.object(self.settings.subprocess, "run", run):
-            self.assertTrue(self.settings.sync_play_service(True))
-        self.assertEqual(calls, [["systemctl", "--user", "disable", "--now", "dynwall-play.service"]])
-
     def test_quality_and_fps_settings_round_trip_and_clamp(self):
         with tempfile.TemporaryDirectory() as td:
             cfgpath = Path(td) / "config.json"
@@ -375,22 +362,21 @@ class SettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, \
              patch.object(settings, "CONFIG_DIR", td), \
              patch.object(settings, "CONFIG_PATH", str(Path(td) / "config.json")), \
-             patch.object(settings, "sync_play_service", return_value=True), \
              patch.object(settings, "sync_dynwall_state", return_value=(True, [])), \
              patch.object(settings.subprocess, "Popen", side_effect=lambda cmd, **kw: commands.append(cmd)), \
              patch.object(settings.GLib, "timeout_add_seconds", return_value=1):
             settings.SettingsWindow._on_save_and_regen(window, button)
-        self.assertEqual(commands, [[settings.DYNWALL_CMD]])
+        self.assertEqual(commands, [["systemctl", "--user", "start", "--no-block", "dynwall.service"]])
 
 
 class InstallerTests(unittest.TestCase):
-    def test_missing_uniform_module_fails_before_mutating_installation(self):
+    def test_missing_renderer_module_fails_before_mutating_installation(self):
         with tempfile.TemporaryDirectory() as td:
             home = Path(td) / 'home'
             home.mkdir()
             package = Path(td) / 'package'
             shutil.copytree(ROOT, package, ignore=shutil.ignore_patterns('.git', '__pycache__'))
-            (package / 'extension/uniforms.js').unlink()
+            (package / 'dynwall_slideshow.py').unlink()
             bindir = Path(td) / 'bin'
             bindir.mkdir()
             for name in ('systemctl', 'gnome-extensions', 'update-desktop-database'):
@@ -400,7 +386,7 @@ class InstallerTests(unittest.TestCase):
             result = subprocess.run(['bash', str(package / 'install.sh'), '--no-render'],
                                     env=dict(os.environ, HOME=str(home), PATH=f'{bindir}:/usr/bin:/bin'),
                                     capture_output=True, text=True, timeout=10)
-            self.assertNotEqual(result.returncode, 0, 'installer accepted a missing runtime module')
+            self.assertNotEqual(result.returncode, 0, 'installer accepted a missing slideshow module')
             self.assertFalse((home / '.local').exists())
 
     def test_incomplete_package_fails_before_mutating_installation(self):
@@ -416,7 +402,7 @@ class InstallerTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((home / ".local").exists(), "broken package mutated installation")
 
-    def test_install_stages_gpu_extension_but_does_not_enable_it_implicitly(self):
+    def test_install_activates_service_without_shell_extension(self):
         with tempfile.TemporaryDirectory() as td:
             home = Path(td)
             bindir = home / "bin"
@@ -431,10 +417,12 @@ class InstallerTests(unittest.TestCase):
                          PATH=f"{bindir}:/usr/bin:/bin"),
                 capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
-            installed = home / ".local/share/gnome-shell/extensions/dynwall@rucaradio"
-            self.assertTrue((installed / "metadata.json").exists())
+            self.assertTrue((home / ".config/systemd/user/dynwall.service").exists())
+            self.assertTrue((home / ".local/bin/dynwall").is_symlink())
             commands = log.read_text()
             self.assertIn("systemctl --user disable --now dynwall-play.service", commands)
+            self.assertIn("systemctl --user enable --now dynwall.timer", commands)
+            self.assertIn("gnome-extensions disable dynwall@rucaradio", commands)
             self.assertNotIn("gnome-extensions enable", commands)
             self.assertFalse((home / ".cache/dynwall/wall.png").exists())
 
