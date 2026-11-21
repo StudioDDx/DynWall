@@ -1,78 +1,36 @@
-# Dynwall
+# DynWall
 
-A time-aware sky wallpaper with **GPU-animated weather for GNOME 50**: layered,
-wind-driven clouds, rain and snow, nighttime clouds, and stars visible through
-gaps in the cloud cover. TopWeather supplies the weather; animation runs locally.
+A time-aware Smoky Mountains desktop wallpaper using a **systemd user service** and GNOME's native slideshow support. The GNOME Shell extension is no longer installed, enabled or needed. The existing Python/Pillow scene composer, landscape packs, optional AI direction, and cached TopWeather observations are retained.
 
-The environment includes a low panoramic landscape with mist-separated hills,
-an irregular treeline, smooth sky gradients and softly lit sun/moon discs.
-Five-stop offline palettes evolve through dawn, daylight, dusk and night, with
-subtle seasonal color. [See the environment preview](docs/previews/environment-preview.jpg).
-
-The existing Python/Pillow sky generator remains the static fallback. Optional
-AI art direction still chooses its palette and composition. The native GNOME
-extension renders the animated sky behind desktop windows and icons using GLSL.
-It never cycles `picture-uri` to animate.
-
-## Requirements
-
-- GNOME Shell **50**, Wayland or X11. Other Shell versions are not declared supported.
-- A working OpenGL driver. Start with **Balanced / 30 FPS**.
-- Python 3 with Pillow and requests; GTK 4, libadwaita and PyGObject for settings.
-- Updated [TopWeather](https://github.com/StudioDDx/TopWeather), running in GNOME,
-  for live weather. No additional weather API key is required.
-
-## Install / upgrade
+## Installation
 
 ```bash
-# Install the updated TopWeather from your local checkout first.
-cd /home/rucaradio/topweather
-./install.sh
-
-cd /home/rucaradio/dynwall
+git pull
 ./install.sh
 ```
 
-The installer now builds a **GNOME extension ZIP** using `gnome-extensions
-pack`, explicitly including `weather.glsl` and `valley-fog.glsl`. It checks
-the archive's required modules, shaders and UUID, then uses
-`gnome-extensions install --force` to install/update it. It does **not**
-enable the extension implicitly. The installer retires the obsolete PNG player
-and retains the 30-minute static-sky timer.
+Run from a normal logged-in GNOME desktop session (not with `sudo`). Requires Python 3, Pillow, requests, and the GNOME wallpaper settings interface. Existing configuration in `~/.config/dynwall/config.json` is preserved.
 
-`./install.sh --pack-only` creates `dist/dynwall@rucaradio.shell-extension.zip`
-without changing desktop files, extensions or services. `--no-render` installs
-without rendering a new fallback wallpaper; `--enable-gpu` attempts to enable
-an extension already discovered by the running GNOME session.
+Installation stops the retired `dynwall-play.service`, disables the old `dynwall@rucaradio` GNOME Shell extension if installed, enables `dynwall.timer`, and renders the initial wallpaper using `dynwall.service`. No extension ZIP packaging, logout or Shell restart is required.
 
-**Log out and back in once after installing/updating extensions.** GNOME caches
-imported extension modules for the session; disabling/re-enabling TopWeather is
-not a reliable code reload. Then:
+## How animation works
+
+`dynwall.service` is a **oneshot** service, invoked by `dynwall.timer` every 30 minutes. It renders a bounded set of PNG frames, creates a native GNOME wallpaper slideshow XML, and changes the GNOME wallpaper URI **once per refresh**. GNOME advances those slides itself; the service does not repeatedly call `gsettings` and does not occupy the Shell with a custom drawing actor.
+
+The default loop is 24 frames at 1.5 seconds each. The renderer interpolates the existing artistic sky effects (stars, glow, celestial drift) and supports the selected landscape artwork. This is **not** feature-equivalent to the removed live GPU renderer: per-frame particle physics, independent shader valley fog and continuously updated weather cannot be reproduced by a static-frame slideshow. Weather and scene selection update on each scheduled regeneration.
+
+To use a static wallpaper, turn animation off in DynWall Settings (`allow_animation: false`). The timer remains responsible for day/night and weather refresh.
 
 ```bash
-gnome-extensions enable topweather@rucaradio
-gnome-extensions enable dynwall@rucaradio
-dynwall-settings
+systemctl --user status dynwall.timer dynwall.service
+journalctl --user -u dynwall.service -n 60 --no-pager
+systemctl --user start dynwall.service  # regenerate now
+systemctl --user disable --now dynwall.timer # pause scheduled refreshes
 ```
 
-Turn on **GPU weather animation**, choose quality/frame rate, and save. Saving
-updates GPU state without an API call or changing the wallpaper. **Save &
-Regenerate now** also rebuilds the fallback sky. Existing installations that
-previously disabled animation retain that preference until you turn it on.
+**Multi-monitor:** native GNOME spanned backgrounds are used. The configured render width/height should match your combined desktop geometry.
 
-### Stop / roll back animation
-
-```bash
-gnome-extensions disable dynwall@rucaradio
-```
-
-The existing static GNOME wallpaper remains underneath. No logout is needed to
-disable the effect. The extension releases its actors, timers and file monitors.
-To also stop periodically regenerating the still:
-
-```bash
-systemctl --user disable --now dynwall.timer
-```
+**Performance:** slides require PNG storage and periodic rendering; the background compositor handles playback. Avoid unnecessarily high resolution or frame count if memory or render latency is a concern.
 
 ## How weather drives the sky
 
