@@ -34,7 +34,7 @@ try:
         data = {}
 except (OSError, ValueError):
     data = {}
-data.update({"enabled": True, "allow_animation": True,
+data.setdefault("width", 1920)\ndata.setdefault("height", 1080)\ndata.update({"enabled": True, "allow_animation": True,
              "landscape_enabled": True, "landscape_pack": "smokies-cinematic"})
 fd, tmp = tempfile.mkstemp(prefix=".config-", dir=config.parent)
 try:
