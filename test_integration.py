@@ -178,13 +178,11 @@ class CliTests(unittest.TestCase):
             self.assertFalse((cache / "dynwall/wall.png").exists())
             self.assertNotIn("gsettings", result.stderr)
 
-    def test_legacy_player_exits_with_migration_instructions(self):
-        with tempfile.TemporaryDirectory() as td:
-            result = subprocess.run([sys.executable, str(ROOT / "dynwall"), "--play"],
-                                    env=dict(os.environ, HOME=td), capture_output=True,
-                                    text=True, timeout=5)
-            self.assertEqual(result.returncode, 2)
-            self.assertIn("gnome-extensions enable dynwall@rucaradio", result.stderr)
+    def test_service_player_respects_disabled_master_switch(self):
+        module = _load_source("dynwall_play_disabled_test", ROOT / "dynwall")
+        with patch.object(module, "load_config", return_value=dict(module.DEFAULTS, enabled=False)), \
+             patch.object(module, "set_wallpaper", side_effect=AssertionError("desktop modified")):
+            self.assertEqual(module.main(["--play"]), 0)
 
 
 class SettingsTests(unittest.TestCase):
@@ -244,7 +242,6 @@ class SettingsTests(unittest.TestCase):
         self.assertTrue(ok, errors)
         self.assertEqual(calls, [
             ["systemctl", "--user", "disable", "--now", "dynwall.timer"],
-            ["gnome-extensions", "disable", "dynwall@rucaradio"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-uri-dark"],
             ["/usr/bin/gsettings", "reset", "org.gnome.desktop.background", "picture-options"],
@@ -265,7 +262,6 @@ class SettingsTests(unittest.TestCase):
         uri = wall.resolve().as_uri()
         self.assertEqual(calls, [
             ["systemctl", "--user", "enable", "--now", "dynwall.timer"],
-            ["gnome-extensions", "enable", "dynwall@rucaradio"],
             ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri],
             ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri],
             ["/usr/bin/gsettings", "set", "org.gnome.desktop.background", "picture-options", "spanned"],
@@ -327,15 +323,6 @@ class SettingsTests(unittest.TestCase):
                         settings.save_config(invalid)
                 self.assertEqual(path.read_text(), original)
                 self.assertEqual(list(Path(td).iterdir()), [path])
-
-    def test_animation_save_never_enables_legacy_player(self):
-        calls = []
-        def run(cmd, **kwargs):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0)
-        with patch.object(self.settings.subprocess, "run", run):
-            self.assertTrue(self.settings.sync_play_service(True))
-        self.assertEqual(calls, [["systemctl", "--user", "disable", "--now", "dynwall-play.service"]])
 
     def test_quality_and_fps_settings_round_trip_and_clamp(self):
         with tempfile.TemporaryDirectory() as td:
