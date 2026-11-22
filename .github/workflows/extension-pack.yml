@@ -12,6 +12,8 @@ on:
       - test_install_pack.py
       - test_service_slideshow.py
       - test_cinematic.py
+      - dynwall_astronomy.py
+      - test_astronomy.py
       - .github/workflows/extension-pack.yml
   pull_request:
     paths:
@@ -34,8 +36,8 @@ jobs:
       - name: Install Python renderer dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pil python3-requests
+          sudo apt-get install -y python3-pil python3-requests python3-ephem
       - name: Validate installer shell syntax
         run: bash -n install.sh install-cinematic.sh
       - name: Exercise service playback and cinematic renderer
-        run: /usr/bin/python3 -m unittest -v test_install_pack test_service_slideshow test_cinematic
+        run: /usr/bin/python3 -m unittest -v test_install_pack test_service_slideshow test_cinematic test_astronomy
